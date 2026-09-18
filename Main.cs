@@ -1092,6 +1092,7 @@ namespace KaCMultiplayer
             // without the player reopening the window.
             KaCMultiplayer.Lobby.DiplomacyWindow.Tick();
             KaCMultiplayer.Lobby.AllianceRequestWindow.Tick();
+            KaCMultiplayer.Lobby.ResourcePicker.Tick();   // Escape closes it; was written, never called
 
             KaCMultiplayer.Lobby.DealRequestWindow.Tick();
 

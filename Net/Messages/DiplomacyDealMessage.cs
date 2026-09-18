@@ -16,6 +16,13 @@ namespace KaCMultiplayer.Net.Messages
 
         /// <summary>The recipient declines. Nothing moves and the deal is forgotten.</summary>
         Refuse = 3,
+
+        /// <summary>
+        /// The payment actually made, sent by the one machine that answers for the payer's
+        /// treasury after it has taken the goods. Amount is what really moved, which can be less
+        /// than was asked. Every machine credits exactly this number. See PlayerRelations.Settle.
+        /// </summary>
+        Settled = 4,
     }
 
     /// <summary>

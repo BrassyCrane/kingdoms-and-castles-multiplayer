@@ -631,26 +631,23 @@ namespace KaCMultiplayer.LoadSaveOverrides
                 repaired = true;
             }
 
+            // Only a row that is MISSING is created, and it is created exactly the way
+            // Player.ResetPerLandMassData creates one: five slots, one per ToolUser, all on. That
+            // is the game's default for an island nobody has touched.
+            //
+            // A row that exists is never rewritten, even if every slot in it is off. An earlier
+            // version of this repair treated "all off" as broken and switched them all back on,
+            // but all-off is a real choice: it is what a player picks to stop quarries, mines,
+            // foresters and fishmongers eating iron tools, and silently undoing it on every load
+            // would spend a kingdom's tools behind its owner's back.
             for (int i = 0; i < landmasses; i++)
             {
-                if (pl.CanUseTools[i] == null || pl.CanUseTools[i].Length == 0)
-                {
-                    pl.CanUseTools[i] = new bool[32];
-                    repaired = true;
-                }
+                if (pl.CanUseTools[i] != null && pl.CanUseTools[i].Length > 0) continue;
 
-                bool any = false;
-                for (int j = 0; j < pl.CanUseTools[i].Length; j++)
-                {
-                    if (pl.CanUseTools[i][j]) { any = true; break; }
-                }
-
-                if (!any)
-                {
-                    for (int j = 0; j < pl.CanUseTools[i].Length; j++)
-                        pl.CanUseTools[i][j] = true;
-                    repaired = true;
-                }
+                bool[] row = new bool[5];
+                for (int j = 0; j < row.Length; j++) row[j] = true;
+                pl.CanUseTools[i] = row;
+                repaired = true;
             }
 
             if (repaired)
