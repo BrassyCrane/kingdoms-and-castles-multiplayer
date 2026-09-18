@@ -259,9 +259,9 @@ namespace KaCMultiplayer.Lobby
             GameObject row = UnityEngine.Object.Instantiate(LobbyPrefabs.DiplomacyRow, content);
             rows.Add(row);
 
-            // A kingdom name is what the player chose and recognises; their account name is the
-            // fallback for someone who never set one.
-            string label = string.IsNullOrEmpty(peer.kingdomName) ? peer.name : peer.kingdomName;
+            // Kingdom AND player. A kingdom name does not say which of your friends chose it, and
+            // with more than two players in a session that stops being obvious at a glance.
+            string label = RowName(peer);
             if (peer.isGhost) label += "  (away)";
             SetText(row, "PlayerName", label, Color.white);
 
@@ -275,8 +275,147 @@ namespace KaCMultiplayer.Lobby
             // here; the periodic refresh picks the new standing up.
             int target = otherTeam;
             Wire(row, "Neutral", delegate { Main.RequestRelationChange(target, World.Relations.Neutral); });
-            Wire(row, "Allies", delegate { Main.RequestRelationChange(target, World.Relations.Allies); });
             Wire(row, "War", delegate { Main.RequestRelationChange(target, World.Relations.Enemy); });
+
+            // ONLY THE BUTTONS THAT MEAN SOMETHING RIGHT NOW.
+            //
+            // The row has room for four buttons and there are five things you might do, so adding
+            // Demand and Send Aid pushed the rest off the end -- which is how Demand came to be
+            // invisible while still existing. Rather than shrink everything, each relation button
+            // is shown only in the state where it does something, which never leaves more than
+            // four on the row:
+            //
+            //   neutral   Demand  Send Aid  Ally            War
+            //   allied    Demand  Send Aid  Break Alliance
+            //   at war    Demand  Send Aid  Make Peace
+            //
+            // Offering an alliance to an ally did nothing, declaring war on someone you are already
+            // at war with did nothing, and "Neutral" was the only way out of an alliance despite not
+            // reading as one. Each of those is now either relabelled or absent.
+            bool allied = now == World.Relations.Allies;
+            bool atWar = now == World.Relations.Enemy;
+
+            SetActive(row, "Neutral", atWar);
+            SetButtonText(row, "Neutral", "Make Peace");
+
+            SetActive(row, "Allies", !atWar);
+            SetButtonText(row, "Allies", allied ? "Break Alliance" : "Ally");
+            Wire(row, "Allies", delegate
+            {
+                Main.RequestRelationChange(target, allied ? World.Relations.Neutral : World.Relations.Allies);
+            });
+
+            // Hidden while allied as well as while already at war: an ally has to be renounced
+            // before they can be fought, so Break Alliance is the only way to that button.
+            SetActive(row, "War", !atWar && !allied);
+
+            // Cloned from Neutral for the same reason the Demand button is: the row prefab ships
+            // three buttons, and cloning inherits its size, font, colours and anchoring rather than
+            // restating them here.
+            CloneRowButton(row, "Demand", "Demand", 1, delegate { ResourcePicker.Open(localTeam, target, false); });
+            CloneRowButton(row, "SendAid", "Send Aid", 2, delegate { ResourcePicker.Open(localTeam, target, true); });
+        }
+
+        /// <summary>
+        /// Adds a Demand button to a row by CLONING one that is already there.
+        ///
+        /// The row prefab ships three buttons and no fourth, and adding one properly would mean
+        /// new prefab art. Cloning the Neutral button copies its size, font, colours and anchoring
+        /// exactly, so the new button matches the others without any of that being restated here
+        /// and without drifting if the prefab is ever restyled.
+        /// </summary>
+        private static void CloneRowButton(GameObject row, string name, string caption,
+                                          int offsetFromNeutral, UnityEngine.Events.UnityAction action)
+        {
+            try
+            {
+                Transform template = row.transform.Find("Neutral");
+                if (template == null) { NetLog.Warn("diplomacy row has no Neutral button to clone"); return; }
+
+                GameObject clone = UnityEngine.Object.Instantiate(template.gameObject, template.parent);
+                clone.name = name;
+
+                // Explicitly, because Instantiate copies the template's active state and the
+                // template is the Neutral button, which is now hidden unless the two kingdoms are
+                // at war. Cloning a hidden button gave a hidden clone: Demand and Send Aid existed,
+                // were wired up correctly, and could not be seen.
+                clone.SetActive(true);
+
+                // Placed after the three standings, which is where they read best: what you are to
+                // each other first, then the things you do about it.
+                clone.transform.SetSiblingIndex(template.GetSiblingIndex() + offsetFromNeutral);
+
+                TextMeshProUGUI label = clone.GetComponentInChildren<TextMeshProUGUI>();
+                if (label != null) label.text = caption;
+
+                Button b = clone.GetComponent<Button>();
+                if (b != null)
+                {
+                    b.onClick.RemoveAllListeners();
+                    b.onClick.AddListener(action);
+                }
+            }
+            catch (Exception e) { NetLog.Error("adding the " + caption + " button", e); }
+        }
+
+        /// <summary>
+        /// Sets a BUTTON's caption, whose label is a child rather than the button itself, which is
+        /// what separates this from SetText.
+        /// </summary>
+        private static void SetButtonText(GameObject row, string node, string caption)
+        {
+            Transform t = row.transform.Find(node);
+            if (t == null) return;
+
+            TextMeshProUGUI label = t.GetComponentInChildren<TextMeshProUGUI>();
+            if (label == null) return;
+
+            label.text = caption;
+
+            // "Break Alliance" is three times the width of "Ally" and the prefab's button is sized
+            // for the short one, so the long caption wrapped onto a second line and spilled out of
+            // the button. Shrinking the text to fit is the right way round: widening the button
+            // would push the rest of the row off the end again.
+            if (!label.enableAutoSizing)
+            {
+                label.fontSizeMax = label.fontSize;
+                label.fontSizeMin = 8f;
+                label.enableAutoSizing = true;
+            }
+            label.enableWordWrapping = false;
+            label.overflowMode = TextOverflowModes.Ellipsis;
+        }
+
+        /// <summary>Shows or hides one of a row's buttons.</summary>
+        private static void SetActive(GameObject row, string node, bool visible)
+        {
+            Transform t = row.transform.Find(node);
+            if (t != null) t.gameObject.SetActive(visible);
+        }
+
+        /// <summary>
+        /// Names a row as "Kingdom  (Steam name)".
+        ///
+        /// The Steam name is asked of Steam rather than taken from the session, because the name
+        /// that travelled in the handshake is whatever the sender happened to be called then, and
+        /// it is blank for a kingdom restored from a save whose owner has not reconnected yet.
+        ///
+        /// Degrades rather than showing nonsense: either part alone when the other is missing, and
+        /// one name rather than "Firereach (Firereach)" when they happen to match.
+        /// </summary>
+        private static string RowName(SessionPlayer peer)
+        {
+            string kingdom = string.IsNullOrWhiteSpace(peer.kingdomName) ? null : peer.kingdomName.Trim();
+
+            // Shared with the deal and alliance popups, so the three can never disagree about what
+            // to call somebody.
+            string persona = peer.SteamPersona();
+            if (string.IsNullOrWhiteSpace(persona)) persona = null;
+
+            if (string.IsNullOrWhiteSpace(kingdom)) return persona ?? "Unknown kingdom";
+            if (string.IsNullOrWhiteSpace(persona) || persona == kingdom) return kingdom;
+
+            return kingdom + "  (" + persona + ")";
         }
 
         private static void Wire(GameObject row, string node, UnityEngine.Events.UnityAction action)

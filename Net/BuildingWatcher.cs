@@ -78,6 +78,30 @@ namespace KaCMultiplayer.Net
         {
             if (building == null || !NetRouter.IsConnected) return;
 
+            // Roads are watched like everything else, and the exclusion that used to sit here has
+            // been removed.
+            //
+            // It read: "Roads are placed in full by BuildPlaceMessage and then become complete
+            // terrain-like objects." They are not. BuildPlaceMessage carries
+            // Built = PendingObj.IsBuilt(), captured at PLACEMENT, and a road at that moment is an
+            // unstarted construction site: built false, constructionProgress 0. Skipping the poll
+            // meant the other machine was told a road existed and then never told it had been
+            // finished, so every remote kingdom's roads sat at zero progress for the life of the
+            // session. Saves show it plainly, and it was true of every multiplayer save on this
+            // machine: the local kingdom's roads all built, the other kingdom's all unbuilt, while
+            // its farms, houses, keep and quarries were fine. Only roads were excluded, so only
+            // roads were wrong.
+            //
+            // The duplicate-CompleteBuild problem the exclusion was written for was real, and has
+            // since been fixed at its source rather than by hiding roads from the watcher:
+            // ApplyBuildSnapshot now calls CompleteBuild instead of writing `built` by reflection,
+            // and BuildingCompleteBuildHook makes CompleteBuild idempotent, which is what makes a
+            // second completion safe in either arrival order.
+            //
+            // Cost is bounded: a snapshot only goes out when the payload would actually differ, no
+            // building may report more often than MinIntervalMs, and a finished road stops changing
+            // and therefore stops sending.
+
             // Only report our own buildings. Everyone else's arrive as snapshots from them.
             try
             {
@@ -189,3 +213,4 @@ namespace KaCMultiplayer.Net
         }
     }
 }
+

@@ -34,6 +34,31 @@ namespace KaCMultiplayer.LoadSaveOverrides
         /// there was nothing to fight over and matters a great deal now that combat exists.
         /// </summary>
         public Dictionary<long, World.Relations> relations = new Dictionary<long, World.Relations>();
+
+        /// <summary>
+        /// Wars that have been declared but have not started yet, as seasons still to run.
+        ///
+        /// Saved for the same reason relations are: a declaration is a promise about the future,
+        /// and losing it on load would quietly cancel a war both players had already been warned
+        /// about and were busy preparing for. Absent or null simply means nobody has declared.
+        /// </summary>
+        public Dictionary<long, int> pendingWars = new Dictionary<long, int>();
+
+        /// <summary>
+        /// What each kingdom charges for its exports, as three lists read together: team, resource,
+        /// price.
+        ///
+        /// Flat rather than a dictionary of dictionaries, because this has to survive being read
+        /// back by a build that may not have the same resource enum, and three parallel lists of
+        /// plain ints degrade predictably where a nested structure does not.
+        ///
+        /// Saved for the same reason relations are: a price list is a decision the player made, and
+        /// losing it on load would quietly hand every kingdom's goods back to the default table
+        /// without saying so.
+        /// </summary>
+        public List<int> exportPriceTeams = new List<int>();
+        public List<int> exportPriceTypes = new List<int>();
+        public List<int> exportPriceValues = new List<int>();
     }
 
     /// <summary>

@@ -39,6 +39,33 @@ namespace KaCMultiplayer
         // they must not block the lobby's ready/Start gating. Cleared if the real player reconnects.
         public bool isGhost = false;
 
+        /// <summary>
+        /// This player's Steam name, or their session name when Steam cannot tell us.
+        ///
+        /// Asked of Steam rather than trusted from the session, because the name that travelled in
+        /// the handshake is whatever the sender happened to be called at the time, and it is blank
+        /// for a kingdom restored from a save whose owner has not reconnected yet.
+        ///
+        /// Lives here rather than in whichever window needed it first, because three of them do now
+        /// and a name that differs between the diplomacy list and the popup asking about the same
+        /// player reads as two different people.
+        /// </summary>
+        public string SteamPersona()
+        {
+            try
+            {
+                ulong id;
+                if (ulong.TryParse(steamId, out id))
+                {
+                    string persona = Steamworks.SteamFriends.GetFriendPersonaName(new Steamworks.CSteamID(id));
+                    if (!string.IsNullOrWhiteSpace(persona) && persona != "[unknown]") return persona;
+                }
+            }
+            catch (System.Exception) { }
+
+            return string.IsNullOrWhiteSpace(name) ? "" : name;
+        }
+
         public SessionPlayer(string name, ushort id, string steamId)
         {
             this.name = name;
@@ -93,10 +120,58 @@ namespace KaCMultiplayer
             player.hazardPayWarmup = new Timer(5f);
             player.hazardPayWarmup.Enabled = false;
 
+            CopySharedSceneRefs(player);
             EnableAllJobSlots(player);
             ResetAsIfSingleton(player);
 
             return host;
+        }
+
+        /// <summary>
+        /// Copies the scene and prefab references a Player carries, from the real local one.
+        ///
+        /// A remote kingdom's Player is built here, in code, so every field Unity would normally
+        /// have wired from the scene is null on it. Most of those never matter, because a remote
+        /// kingdom is simulated rather than driven. These six matter, because VANILLA reads them
+        /// off whichever Player it happens to be looking at, and this mod regularly arranges for
+        /// that to be a remote one.
+        ///
+        ///   healthBarPrefab  Keep.OnBuildingPlacement does
+        ///                    Instantiate(Player.inst.healthBarPrefab), and RestoreAbsentPlayer
+        ///                    points Player.inst at the ghost while restoring its buildings. A null
+        ///                    prefab there throws "The Object you want to instantiate is null" from
+        ///                    the middle of the unpack. Caught and logged in Player.log only, never
+        ///                    in output.txt, which is why it went unseen for so long.
+        ///
+        ///   unitIGUIprefab   the same shape of Instantiate, for unit UI.
+        ///
+        ///   *Integrity       Building.UpdateIntegrityOverlayMaterial chooses one of these four
+        ///                    materials, and the Building-owner transpiler deliberately redirects
+        ///                    that read from Player.inst to the building's OWNER. For another
+        ///                    player's building the owner is one of these objects, so a null here
+        ///                    is a building drawn with no material.
+        ///
+        /// buildingContainer is deliberately NOT copied. Reset gives each kingdom its own, and
+        /// sharing one would parent every kingdom's buildings under the local player's.
+        ///
+        /// Null sources are skipped rather than copied, so being called at a moment when the
+        /// singleton is itself a stand-in cannot overwrite good references with nothing.
+        /// </summary>
+        private static void CopySharedSceneRefs(Player target)
+        {
+            try
+            {
+                Player source = Player.inst;
+                if (source == null || source == target) return;
+
+                if (source.healthBarPrefab != null) target.healthBarPrefab = source.healthBarPrefab;
+                if (source.unitIGUIprefab != null) target.unitIGUIprefab = source.unitIGUIprefab;
+                if (source.HighIntegrity != null) target.HighIntegrity = source.HighIntegrity;
+                if (source.MediumIntegrity != null) target.MediumIntegrity = source.MediumIntegrity;
+                if (source.LowIntegrity != null) target.LowIntegrity = source.LowIntegrity;
+                if (source.VeryLowIntegrity != null) target.VeryLowIntegrity = source.VeryLowIntegrity;
+            }
+            catch (System.Exception ex) { Main.LogEx("copying shared scene references to a remote kingdom", ex); }
         }
 
         /// <summary>
@@ -141,9 +216,36 @@ namespace KaCMultiplayer
         private static void ResetAsIfSingleton(Player player)
         {
             Player previous = Player.inst;
+
+            // Player.Reset() ends with `Object.Destroy(World.inst.caveContainer)`. That container
+            // is GLOBAL world state, not this player's, and nothing recreates it: only World.Setup
+            // builds it, and that runs once at world generation. So every remote player that joins
+            // destroyed the world's cave container for everybody, permanently.
+            //
+            // The damage was not caves. It was the SEASON, and through it the harvest:
+            //
+            //   World.WorldSaveData.Pack reads caveContainer.transform.childCount unguarded, so
+            //   after this every autosave threw NullReferenceException. Autosave is driven by
+            //   AutoSave.OnOnSeasonChange, a subscriber to Weather.OnSeasonChange, and a .NET
+            //   multicast delegate stops dispatching at the first subscriber that throws. Every
+            //   farm's YieldProducerSeason.Inst_OnSeasonChange subscribes later than AutoSave
+            //   does, so no farm ever received the season change, no yield was ever emitted, and
+            //   actualYieldPercentage was never reset. Crops grew taller every year and were
+            //   never harvested, on a farm that was built, Open and fully staffed.
+            //
+            // Hiding the container for the duration of Reset is enough: Object.Destroy(null) is a
+            // no-op, so the real container and its children survive. This also stops a mid-game
+            // join from deleting the caves, wolf dens and witch huts that are already standing.
+            //
+            // NOTE: Reset makes several more global calls in the same breath (RaiderSystem.Reset,
+            // UnitSystem.Reset, World.DestroyStoneUIs, MiniMapViewer.Reset, and it clears
+            // LoadSave's custom save data). Running it once per remote player resets all of those
+            // too. Only the cave container is fixed here, because only it had a proven victim.
             try
             {
-                player.Reset();
+                // The cave-container protection lives in Main.ResetKingdomSafely now, so the map
+                // reroll and this path cannot drift apart on it.
+                Main.ResetKingdomSafely(player);
             }
             finally
             {

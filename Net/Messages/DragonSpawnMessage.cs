@@ -9,6 +9,17 @@ namespace KaCMultiplayer.Net.Messages
         Siege = 0,
         Mama = 1,
         Baby = 2,
+
+        /// <summary>
+        /// The baby that drops in for a season and leaves again, from
+        /// <c>DragonSpawn.SpawnBabyDragonToVisit</c>.
+        ///
+        /// Its own kind rather than reusing <see cref="Baby"/>, because the receiver dispatches on
+        /// this to pick which spawn method to call, and a visiting baby has different actions and a
+        /// stay limit. Spawning it as a wild Baby would leave a permanent dragon on every machine
+        /// except the one that started it.
+        /// </summary>
+        Visiting = 3,
     }
 
     /// <summary>
