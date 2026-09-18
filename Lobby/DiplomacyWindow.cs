@@ -277,6 +277,43 @@ namespace KaCMultiplayer.Lobby
             Wire(row, "Neutral", delegate { Main.RequestRelationChange(target, World.Relations.Neutral); });
             Wire(row, "Allies", delegate { Main.RequestRelationChange(target, World.Relations.Allies); });
             Wire(row, "War", delegate { Main.RequestRelationChange(target, World.Relations.Enemy); });
+
+            AddDemandButton(row, localTeam, target);
+        }
+
+        /// <summary>
+        /// Adds a Demand button to a row by CLONING one that is already there.
+        ///
+        /// The row prefab ships three buttons and no fourth, and adding one properly would mean
+        /// new prefab art. Cloning the Neutral button copies its size, font, colours and anchoring
+        /// exactly, so the new button matches the others without any of that being restated here
+        /// and without drifting if the prefab is ever restyled.
+        /// </summary>
+        private static void AddDemandButton(GameObject row, int localTeam, int target)
+        {
+            try
+            {
+                Transform template = row.transform.Find("Neutral");
+                if (template == null) { NetLog.Warn("diplomacy row has no Neutral button to clone"); return; }
+
+                GameObject demand = UnityEngine.Object.Instantiate(template.gameObject, template.parent);
+                demand.name = "Demand";
+
+                // Placed immediately after Neutral, which is where it was asked for and also
+                // where it reads best: the three standings, then the thing you do to a standing.
+                demand.transform.SetSiblingIndex(template.GetSiblingIndex() + 1);
+
+                TextMeshProUGUI label = demand.GetComponentInChildren<TextMeshProUGUI>();
+                if (label != null) label.text = "Demand";
+
+                Button b = demand.GetComponent<Button>();
+                if (b != null)
+                {
+                    b.onClick.RemoveAllListeners();
+                    b.onClick.AddListener(delegate { ResourcePicker.Open(localTeam, target); });
+                }
+            }
+            catch (Exception e) { NetLog.Error("adding the Demand button", e); }
         }
 
         private static void Wire(GameObject row, string node, UnityEngine.Events.UnityAction action)

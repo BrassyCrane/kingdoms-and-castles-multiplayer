@@ -70,14 +70,56 @@ namespace KaCMultiplayer.Net
         }
 
         /// <summary>
-        /// Sends up to <see cref="ChunksPerTick"/> queued chunks. Call once per fixed tick on
-        /// the host; a no-op everywhere else.
+        /// Seconds between pumps. This is the fixed tick this method used to run on, kept as a
+        /// literal so the rate on the wire does not change: <see cref="ChunksPerTick"/> every
+        /// interval, about 500 chunks a second.
         /// </summary>
+        private const float PumpIntervalSeconds = 0.02f;
+
+        /// <summary>Unscaled seconds banked since the last pump.</summary>
+        private static float pumpClock;
+
+        /// <summary>
+        /// Sends queued chunks at a fixed real-time rate. Call once per RENDERED FRAME on the host;
+        /// a no-op everywhere else.
+        /// </summary>
+        ///
+        /// <remarks>
+        /// Driven by Update and unscaled time, NOT by FixedUpdate, and that is the whole point.
+        ///
+        /// The host PAUSES the game before sending a live snapshot (see SessionHandlers, "X is
+        /// joining"). Pausing goes through SpeedControlUI.SetSpeed(0), which sets Time.timeScale to
+        /// 0, and Unity stops running FixedUpdate altogether when it does. So the one method whose
+        /// job is to drain this queue was never called again: the host sat paused with ~1900 chunks
+        /// still queued, the joiner waited for a save that was never sent, and its reliable
+        /// messages timed out into "Could not guarantee delivery of a Reliable message after 15
+        /// attempts" and a PoorConnection drop. Nothing unpaused the host either, because what
+        /// unpauses it is the transfer finishing.
+        ///
+        /// The heartbeat shows this plainly whenever the game is paused: 'frame' keeps climbing
+        /// while 'fixedTicks' stands still. A transfer has to outlive the pause that triggers it,
+        /// so it is paced off wall-clock time instead of sim time.
+        /// </remarks>
         public static void PumpOutgoing()
         {
-            if (!NetRouter.IsServer || Outgoing.Count == 0) return;
+            if (!NetRouter.IsServer || Outgoing.Count == 0)
+            {
+                pumpClock = 0f;
+                return;
+            }
 
-            for (int i = 0; i < ChunksPerTick && Outgoing.Count > 0; i++)
+            pumpClock += UnityEngine.Time.unscaledDeltaTime;
+            if (pumpClock < PumpIntervalSeconds) return;
+
+            // Catch up at most a few intervals' worth. A frame hitch (or a loading stall) can bank a
+            // large gap, and spending it all at once would be the very burst the throttle exists to
+            // prevent.
+            int intervals = (int)(pumpClock / PumpIntervalSeconds);
+            if (intervals > 4) intervals = 4;
+            pumpClock = 0f;
+
+            int budget = intervals * ChunksPerTick;
+            for (int i = 0; i < budget && Outgoing.Count > 0; i++)
             {
                 OutgoingChunk chunk = Outgoing.Dequeue();
                 NetRouter.SendTo(chunk.Message, chunk.ClientId);
@@ -181,6 +223,58 @@ namespace KaCMultiplayer.Net
         }
 
         /// <summary>
+        /// Gives the local kingdom a livery BEFORE the received world is loaded.
+        ///
+        /// LoadSave.Load brings the game UI up, and the build menu is built exactly once, by
+        /// BuildUI.Start, which Unity never runs again. Its buttons are not sprites:
+        /// BuildTab.AddButton instantiates each building's own DisplayModel, scales it and moves it
+        /// onto the UI layer, so every "image" in that menu is a live object that takes its
+        /// materials at the moment it is created.
+        ///
+        /// On this path that moment lands in a gap. The kingdom's banner is not restored until
+        /// Unpack, which runs AFTER Load, so the menu was being built while bannerIdx was still -1
+        /// and the livery materials did not exist yet. What comes out is a menu of buttons that
+        /// keep their background and their label and show no building at all. A guest joining a
+        /// FRESH world never sees it, because the banner is chosen on the name-and-banner screen
+        /// before play mode begins; nor does a host, whose load runs in vanilla's own order.
+        ///
+        /// Seeding closes the gap at its source instead of rebuilding the menu afterwards.
+        /// Rebuilding was tried first and is NOT safe: BuildUI.Start attaches its tab handlers to
+        /// serialised scene objects (BuildUI.CemeteryTab and the rest), so clearing the containers
+        /// to stop a second set of tabs appearing would destroy the very objects it then
+        /// dereferences.
+        ///
+        /// Any valid index will do, because Unpack sets the real one moments later. What matters is
+        /// only that a livery EXISTS before the UI reads it. A kingdom that already has a banner is
+        /// left alone.
+        /// </summary>
+        private static void SeedLiveryBeforeLoad()
+        {
+            try
+            {
+                if (Player.inst == null || Player.inst.PlayerLandmassOwner == null) return;
+
+                LandmassOwner owner = Player.inst.PlayerLandmassOwner;
+
+                // Logged either way. If the banner is already set by this point, the reasoning above
+                // does not hold for this run, and the log should say so plainly rather than leaving
+                // it to be worked out again from the symptom.
+                NetLog.Info("pre-load livery check: bannerIdx=" + owner.bannerIdx
+                            + " buildMenuAlreadyBuilt=" + (BuildUI.inst != null));
+
+                if (owner.bannerIdx >= 0) return;
+
+                int idx = Main.localChosenBanner;
+                if (idx < 0) idx = 0;
+                if (World.inst != null && World.inst.liverySets != null
+                    && idx >= World.inst.liverySets.Count) idx = 0;
+
+                Main.SetKingdomBanner(owner, idx, "seeding a livery before a received save loads");
+            }
+            catch (Exception ex) { NetLog.Error("seeding a livery before the load", ex); }
+        }
+
+        /// <summary>
         /// Loads the assembled save. Wrapped so a failure inside Unpack cannot leave the
         /// loading panel on screen forever, all the bytes arrived, and the panel staying up
         /// looks identical to a hung transfer.
@@ -193,6 +287,8 @@ namespace KaCMultiplayer.Net
             {
                 Main.LoadSaveLoadHook.saveBytes = buffer;
                 Main.LoadSaveLoadHook.fromNetwork = true;
+
+                SeedLiveryBeforeLoad();
                 LoadSave.Load();
                 Main.LoadSaveLoadHook.saveContainer.Unpack(null);
                 Broadcast.OnLoadedEvent.Broadcast(new OnLoadedEvent());

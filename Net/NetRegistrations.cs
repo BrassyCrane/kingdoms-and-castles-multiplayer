@@ -130,6 +130,12 @@ namespace KaCMultiplayer.Net
             NetRegistry.OnClient<DragonSpawnMessage>(NetMessageId.DragonSpawn,
                 (m, ctx) => ApplyDragonSpawn(m));
 
+            // Dragon flight. Host-authoritative and one-way: only the host publishes, so there is
+            // no server-side handler and no relay decision to make. See Combat/DragonFlightSync.cs.
+            NetRegistry.Register<DragonFlightMessage>(NetMessageId.DragonFlight);
+            NetRegistry.OnClient<DragonFlightMessage>(NetMessageId.DragonFlight,
+                (m, ctx) => KaCMultiplayer.Combat.DragonFlightSync.Apply(m));
+
             NetRegistry.Register<DragonHealthMessage>(NetMessageId.DragonHealth);
             NetRegistry.OnServer<DragonHealthMessage>(NetMessageId.DragonHealth,
                 (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) ApplyDragonHealth(m); });
@@ -312,6 +318,15 @@ namespace KaCMultiplayer.Net
 
             // Diplomacy. Applied on every machine including the sender's, see
             // PlayerRelationMessage for why this one does not apply locally first.
+            // Tribute and peace deals. Relayed to everyone INCLUDING the sender, like relations
+            // are, because the outcome is reasoned out identically on every machine rather than
+            // applied locally first and announced afterwards.
+            NetRegistry.Register<DiplomacyDealMessage>(NetMessageId.DiplomacyDeal);
+            NetRegistry.OnServer<DiplomacyDealMessage>(NetMessageId.DiplomacyDeal,
+                (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) PlayerRelations.ApplyDeal(m); });
+            NetRegistry.OnClient<DiplomacyDealMessage>(NetMessageId.DiplomacyDeal,
+                (m, ctx) => PlayerRelations.ApplyDeal(m));
+
             NetRegistry.Register<PlayerRelationMessage>(NetMessageId.PlayerRelation);
             NetRegistry.OnServer<PlayerRelationMessage>(NetMessageId.PlayerRelation,
                 (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) ApplyPlayerRelation(m); });
@@ -467,6 +482,15 @@ namespace KaCMultiplayer.Net
                 World.inst.Generate(m.Seed);
                 LobbyScreen.mapPreviewDirty = true;
 
+                // The map has only just come into existence, and every kingdom built before now
+                // sized its per-landmass job tables to the world that existed at handshake time,
+                // usually the menu's. Nothing in the game grows them afterwards, and a table too
+                // short to cover a player's own island makes the job hooks fall back to the local
+                // player's settings, which leaves that kingdom's farms permanently unstaffed.
+                // Now is the first moment NumLandMasses is the real number. See
+                // Main.EnsureJobTablesCoverWorld.
+                Main.EnsureAllJobTablesCoverWorld();
+
                 Cell centre = World.inst.GetCellData(World.inst.GridWidth / 2, World.inst.GridHeight / 2);
                 if (centre != null) Cam.inst.SetTrackingPos(centre.Center);
             }
@@ -482,7 +506,25 @@ namespace KaCMultiplayer.Net
 
             try
             {
-                if (SteamLobby.loadingSave)
+                // A world that came from a save must NOT go through StartGame.
+                //
+                // StartGame is the NEW-GAME entry point. It re-enters playing mode, resets the town
+                // name and re-arms the first-time UI, including the prompt to go and place a keep.
+                // Run over a kingdom a save has just restored, it asks a returning player to found
+                // the town they are already standing in.
+                //
+                // The HOST was always safe here, because SteamLobby.loadingSave is a host-side flag:
+                // the host set it in the save picker, took this branch, and skipped StartGame. A
+                // guest's copy is false no matter how the save reached them, so every guest fell
+                // through to StartGame instead. That is the "I could build on my old castle but it
+                // still said place your castle" report: the kingdom was restored and perfectly
+                // usable, with the new-game UI laid over the top of it.
+                //
+                // SaveTransfer.LoadingSave is the guest's equivalent. It goes true on the first
+                // chunk and is only cleared when networking is torn down, so it still reads true by
+                // the time the host presses Start and this handler runs.
+                bool hostLoadedFromPicker = SteamLobby.loadingSave;
+                if (hostLoadedFromPicker || SaveTransfer.LoadingSave)
                 {
                     SteamLobby.loadingSave = false;
 
@@ -497,10 +539,36 @@ namespace KaCMultiplayer.Net
                     // host mid-flow with no way forward. But it must not claim a save was loaded when
                     // none was, and a joiner who received nothing is now stated outright rather than
                     // being left to discover it as an empty world.
-                    bool haveSave = Main.LoadSaveLoadAtPathHook.saveData != null
-                                 && Main.LoadSaveLoadAtPathHook.saveData.Length > 0;
+                    // Only the host reads a file, so only the host can have failed to. A guest's
+                    // world arrives over the wire and its bytes never touch LoadAtPath, so testing
+                    // that here would accuse every guest of a host-side mistake.
+                    bool haveSave = !hostLoadedFromPicker
+                                 || (Main.LoadSaveLoadAtPathHook.saveData != null
+                                     && Main.LoadSaveLoadAtPathHook.saveData.Length > 0);
 
                     GameState.inst.SetNewMode(GameState.inst.playingMode);
+
+                    // A guest's world arrives as bytes off the network rather than through the
+                    // save picker, so it is worth asking what the game's own load path does that
+                    // this one does not. The answer, tested, is: nothing that should be repeated
+                    // here.
+                    //
+                    // SetupInitialPathCosts, CombineStone and GenerateStoneUIs were all called at
+                    // this point for a while, on the theory that a guest skipping StartGame had
+                    // missed them. The theory was wrong, and running them did real damage:
+                    // GenerateStoneUIs re-created the "Stone" markers that only ever belong to a
+                    // world where no keep has been placed yet (Keep.OnBuildingPlacement is what
+                    // destroys them, and a restored kingdom's keep is placed before this runs, so
+                    // nothing cleared them again), and the pathing reset took the roads with it.
+                    // They are deliberately NOT called. A loaded world already has all three.
+                    if (!hostLoadedFromPicker)
+                    {
+                        // The build menu's pictures are 3D models on the UI layer, so they need a
+                        // camera drawing that layer. Report its state rather than guess at it.
+                        Main.LogBuildMenuState("guest finished loading a saved world");
+
+                        LookAtOurOwnKeep();
+                    }
 
                     // A loaded save used to drop straight into a running world. The fresh-world path
                     // below has always paused on entry (twice, SetNewMode re-asserts a speed of its
@@ -567,6 +635,35 @@ namespace KaCMultiplayer.Net
                 SpeedControlUI.inst.SetSpeed(0);
             }
             catch (Exception ex) { NetLog.Error("session start", ex); }
+        }
+
+        /// <summary>
+        /// Points the camera at THIS player's keep after a received world has loaded.
+        ///
+        /// A save carries the camera with it. FromContainer copies CameraSaveData across and
+        /// base.Unpack restores it, which is right for the machine that wrote the save and wrong
+        /// for every other one: the file was written by the HOST, so a guest finishes loading
+        /// looking at the host's castle, on the host's island, with their own kingdom somewhere
+        /// off screen. It reads as "the load put me in the wrong place", and it is the first
+        /// thing a joining player sees.
+        ///
+        /// Only the view is corrected. The camera's saved position is the only thing being
+        /// overridden, and only for a guest, so a host loading its own save still opens exactly
+        /// where it left off.
+        /// </summary>
+        private static void LookAtOurOwnKeep()
+        {
+            try
+            {
+                if (Cam.inst == null || Player.inst == null || Player.inst.keep == null) return;
+
+                Building keep = Player.inst.keep.GetComponent<Building>();
+                if (keep == null) return;
+
+                Cam.inst.SetTrackingPos(keep.GetPosition());
+                NetLog.Info("camera moved to our own keep (the save arrived holding the host's view)");
+            }
+            catch (Exception ex) { NetLog.Error("pointing the camera at our own keep", ex); }
         }
 
         /// <summary>
@@ -851,22 +948,47 @@ namespace KaCMultiplayer.Net
                 building.transform.GetChild(0).rotation = s.Rotation;
                 building.transform.GetChild(0).localPosition = s.LocalPosition;
 
-                // Ship-launch pads spawn their ship in OnBuilt, which runs from CompleteBuild
-                // and not from setting 'built' by reflection out of a snapshot. Without the call
-                // below, a remote player's finished pad leaves everyone else with a pad and no
-                // ship. BuildingCompleteBuildHook makes CompleteBuild idempotent, so a machine
-                // that also finishes the pad locally does not spawn a second one.
-                bool isShipLaunch = building.GetComponent<SeedShipLaunch>() != null
-                                 || building.GetComponent<TransportShipLaunch>() != null;
-
-                if (isShipLaunch && s.Built && !building.IsBuilt())
+                // A building is COMMISSIONED by CompleteBuild, not by the value of its 'built'
+                // field. CompleteBuild is the only thing that sends OnBuilt, registers the
+                // building's IResourceProviders with FreeResourceManager, calls
+                // Player.BuildingNowBuilt (which takes it off the landmass's unbuilt list and
+                // recalculates max storage), creates its worker jobs through TryAddJobs, and
+                // bakes its pathing.
+                //
+                // Writing 'built = true' by reflection did none of that, and then made it
+                // unrecoverable: BuildingCompleteBuildHook skips CompleteBuild on a building
+                // that already reports IsBuilt(), so the local simulation's own completion a
+                // moment later was suppressed as a "duplicate" and the building stayed
+                // uncommissioned for the rest of the session. That is the
+                // "skipped duplicate CompleteBuild for farm (...)" line in the logs, and the
+                // hook's own comment named this write as the first place to look.
+                //
+                // What that costs depends on how the building reached us. One that arrived
+                // through ApplyBuildPlace has had its providers and jobs set up already, by
+                // BuildingSaveData.UnpackStage2, so what it loses is OnBuilt, BuildingNowBuilt
+                // and BakePathing: it stays on the landmass's unbuilt list, its storage is
+                // never added to the kingdom's maximum, and the cells under it never get their
+                // pathing costs baked. One that arrived by snapshot alone, with no placement
+                // to unpack, loses the jobs and the FreeResourceManager registration as well,
+                // which on a farm is a field with no HarvesterJob that nobody can harvest.
+                //
+                // Ship-launch pads were the first case of this to be noticed (a pad with no
+                // ship) and were fixed narrowly; the cause was never specific to launch pads,
+                // so every building goes through CompleteBuild now.
+                //
+                // CompleteBuild is idempotent thanks to that same hook, so this is safe in
+                // either arrival order: if our own simulation finished the building first, the
+                // snapshot finds IsBuilt() already true and does nothing.
+                if (s.Built && !building.IsBuilt())
                 {
-                    NetLog.Info("build snapshot: completing remote ship launch " + s.UniqueName);
                     building.CompleteBuild();
                 }
-                else
+                else if (!s.Built && building.IsBuilt())
                 {
-                    SetPrivateField(building, "built", s.Built);
+                    // Un-completing has no vanilla entry point, so the field write is all there
+                    // is. Only reachable if we ran ahead of the owner and finished a building
+                    // they still have under construction.
+                    SetPrivateField(building, "built", false);
                 }
 
                 SetPrivateField(building, "placed", s.Placed);
@@ -1396,7 +1518,14 @@ namespace KaCMultiplayer.Net
         {
             try
             {
-                PlayerRelations.Set(m.TeamA, m.TeamB, (World.Relations)m.Relation);
+                // Every machine runs the SAME rule over the same message, so all of them reach
+                // the same answer without a second round trip: an alliance needs both sides to
+                // have asked, a war starts only after its notice period, and just the outcome of
+                // that reasoning is applied here.
+                World.Relations? now = PlayerRelations.RequestFrom(
+                    m.TeamA, m.TeamB, (World.Relations)m.Relation);
+
+                if (now.HasValue) PlayerRelations.Set(m.TeamA, m.TeamB, now.Value);
             }
             catch (Exception ex) { NetLog.Error("player relation", ex); }
         }
@@ -1463,6 +1592,7 @@ namespace KaCMultiplayer.Net
                     case DragonKind.Siege: DragonSpawn.inst.SpawnSiegeDragon(at); break;
                     case DragonKind.Mama: DragonSpawn.inst.SpawnMamaDragon(at); break;
                     case DragonKind.Baby: DragonSpawn.inst.SpawnBabyDragon(at); break;
+                    case DragonKind.Visiting: DragonSpawn.inst.SpawnBabyDragonToVisit(at); break;
                     default: NetLog.Warn("unknown dragon kind " + (int)m.Kind); break;
                 }
 

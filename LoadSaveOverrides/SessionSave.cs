@@ -32,10 +32,25 @@ namespace KaCMultiplayer.LoadSaveOverrides
         [NonSerialized]
         public Dictionary<long, World.Relations> savedRelations;
 
+        /// <summary>Declared-but-not-yet-started wars, in seasons remaining. See ModSaveData.</summary>
+        public Dictionary<long, int> savedPendingWars;
+
         // True only while Unpack() is running. Used by hooks (e.g. ShipUpdatePathingHook) to
         // suppress mid-load work that the world isn't ready for yet (ship pathing needs the
         // water nav grid, which isn't built until the unpack finishes).
         public static bool Unpacking = false;
+
+        // Other kingdoms append to the job registry that base.Unpack already populated.
+        public static bool RestoringAdditionalKingdom { get; private set; }
+
+        [Harmony.HarmonyPatch(typeof(JobSystem), "InitJobList")]
+        public class PreserveLoadedJobsHook
+        {
+            public static bool Prefix()
+            {
+                return !RestoringAdditionalKingdom;
+            }
+        }
 
         /// <summary>
         /// Builds the save record for a multiplayer session: everything vanilla stores, plus one
@@ -93,6 +108,7 @@ namespace KaCMultiplayer.LoadSaveOverrides
             ss.players = mod.players ?? new Dictionary<string, Player.PlayerSaveData>();
             ss.kingdomNames = mod.kingdomNames ?? new Dictionary<string, string>();
             ss.savedRelations = mod.relations;
+            ss.savedPendingWars = mod.pendingWars;
             return ss;
         }
 
@@ -228,12 +244,9 @@ namespace KaCMultiplayer.LoadSaveOverrides
         ///   EXTEND   Restore the other kingdoms, relink keeps, put the kingdom name back and
         ///            reinstate declared wars.
         ///
-        /// KNOWN ORDERING RISK, stated rather than hidden. The old code restored every kingdom
-        /// BEFORE the subsystem unpacks; the other kingdoms now land after them. Jobs are owned per
-        /// player, so a remote kingdom's jobs may need re-registering. This is why RelinkKeeps and
-        /// the per-player summary below log building counts and keep links: a remote kingdom that
-        /// came back without them is the symptom to look for. Verify on a real save/load with two
-        /// kingdoms before trusting it.
+        /// The job registry is shared by all kingdoms. Additional player unpacks must not run
+        /// InitJobList again through ResetPerLandMassData, or earlier kingdoms lose their jobs.
+        /// PreserveLoadedJobsHook suppresses that reset only during RestoreAbsentPlayer.
         /// </summary>
         public override object Unpack(object obj)
         {
@@ -248,9 +261,30 @@ namespace KaCMultiplayer.LoadSaveOverrides
                 // joining client restores the save author's kingdom as their own.
                 Player.PlayerSaveData localData;
                 if (!players.TryGetValue(localSteamId, out localData) || localData == null)
-                    throw new InvalidOperationException(
-                        $"no saved kingdom matches this Steam id ({localSteamId}); the save holds " +
-                        string.Join(", ", players.Keys.ToArray()));
+                {
+                    // A player who was not in this save is not an error: someone can join a
+                    // friend's loaded game for the first time. They get the world, everybody
+                    // else's kingdoms, and the name-and-banner screen to found their own.
+                    //
+                    // It throws only when we cannot even do that, because by then the world is
+                    // half-restored and carrying on would leave them standing in it with no
+                    // kingdom and no way to make one.
+                    Main.helper.Log($"[LOAD] no saved kingdom for this Steam id ({localSteamId}); " +
+                                    "the save holds " + string.Join(", ", players.Keys.ToArray()) +
+                                    ". Joining as a NEW kingdom.");
+
+                    object fresh = base.Unpack(obj);
+                    RestoreOtherKingdoms(localSteamId);
+                    RelinkKeeps();
+                    RepairLoadedPlayability();
+                    RestoreNormalGameplayOptions();
+                    LogLoadedKingdoms();
+                    KaCMultiplayer.Net.PlayerRelations.Restore(savedRelations);
+                    KaCMultiplayer.Net.PlayerRelations.RestorePendingWars(savedPendingWars);
+
+                    Main.TransitionTo(KaCMultiplayer.Lobby.MenuState.NameAndBanner);
+                    return fresh;
+                }
 
                 this.PlayerSaveData = localData;
 
@@ -259,7 +293,32 @@ namespace KaCMultiplayer.LoadSaveOverrides
 
                 RestoreOtherKingdoms(localSteamId);
                 RelinkKeeps();
+                RepairLoadedPlayability();
+                RestoreNormalGameplayOptions();
                 LogLoadedKingdoms();
+
+                // Tell the lobby what difficulty this save was made with.
+                //
+                // The lobby is the authority while a session is being set up, and it broadcasts
+                // its settings continuously. Loading a Hard save into a lobby still holding the
+                // default left the two disagreeing, and the lobby won: the world quietly became
+                // Peaceful. Difficulty decides a great deal, dragons do not spawn on Peaceful at
+                // all, so this is not cosmetic.
+                try
+                {
+                    int loaded = (int)Player.inst.difficulty;
+                    if (KaCMultiplayer.Net.LobbySettings.Current.Difficulty != loaded)
+                    {
+                        Main.helper.Log("[LOAD] difficulty from the save: "
+                            + KaCMultiplayer.Lobby.GameDifficultyExtensions.Label(loaded)
+                            + " (lobby held "
+                            + KaCMultiplayer.Lobby.GameDifficultyExtensions.Label(
+                                  KaCMultiplayer.Net.LobbySettings.Current.Difficulty)
+                            + ")");
+                        KaCMultiplayer.Net.LobbySettings.Current.Difficulty = loaded;
+                    }
+                }
+                catch (Exception dex) { Main.helper.Log("[LOAD] could not adopt the save's difficulty: " + dex.Message); }
 
                 SessionPlayer localPlayer = Main.kCPlayers[localSteamId];
                 localPlayer.banner = Player.inst.PlayerLandmassOwner.bannerIdx;
@@ -269,6 +328,7 @@ namespace KaCMultiplayer.LoadSaveOverrides
                 // earlier would rebake the pathing gates and re-apply dock policy against teams
                 // still being assembled, so the war would be reinstated against a half-built world.
                 KaCMultiplayer.Net.PlayerRelations.Restore(savedRelations);
+                KaCMultiplayer.Net.PlayerRelations.RestorePendingWars(savedPendingWars);
 
                 // Quiet: the loud form announces a royal decree on every single load, and with a
                 // blank value it also overwrites the name base.Unpack just restored.
@@ -306,8 +366,27 @@ namespace KaCMultiplayer.LoadSaveOverrides
 
             foreach (var kvp in players)
             {
+                int savedTeam = (kvp.Value != null && kvp.Value.playerLandmassOwnerSaveData != null)
+                    ? kvp.Value.playerLandmassOwnerSaveData.teamId : -1;
+
                 SessionPlayer player;
-                if (Main.kCPlayers.TryGetValue(kvp.Key, out player)) continue;
+                if (Main.kCPlayers.TryGetValue(kvp.Key, out player))
+                {
+                    // Already registered, because the handshake ran before this save was read.
+                    //
+                    // Their SessionPlayer was built while LoadIdentity was still empty, so its team
+                    // came from the fresh-game formula (clientId + 4) rather than from the save, and
+                    // nothing revisited it afterwards. Leaving it is the orphan-phantom this file
+                    // exists to prevent, seen from the other side: the kingdom is restored under its
+                    // SAVED team while the player drives a Player object on a DIFFERENT one, so they
+                    // own nothing, have no keep, and the game offers them a fresh castle while the
+                    // town they built stands untouched beside them.
+                    //
+                    // With two players the formula lands on 6 and happens to agree with the save,
+                    // which is exactly why this survived every two-player test.
+                    AdoptSavedTeam(player, kvp.Key, savedTeam);
+                    continue;
+                }
 
                 if (kvp.Key == localSteamId)
                 {
@@ -358,6 +437,53 @@ namespace KaCMultiplayer.LoadSaveOverrides
             }
         }
 
+        /// <summary>
+        /// Moves a player who was already registered onto the team their saved kingdom carries.
+        ///
+        /// Only ever corrects a DISAGREEMENT, and only towards the save. That is LoadIdentity's own
+        /// rule, the save wins over anything the handshake derived, but the registry is not filled
+        /// until a load actually begins, so a player who connected before that was handed a formula
+        /// team with nothing to check it against.
+        ///
+        /// Safe to run on the local player too: their team is asserted from the same registry a few
+        /// lines further down, so both paths settle on the value the save carries.
+        /// </summary>
+        private static void AdoptSavedTeam(SessionPlayer player, string steamId, int savedTeam)
+        {
+            try
+            {
+                if (savedTeam <= 0 || player == null || player.inst == null) return;
+
+                LandmassOwner owner = player.inst.PlayerLandmassOwner;
+                if (owner == null || owner.teamId == savedTeam) return;
+
+                Main.helper.Log($"[LOADID] {steamId} joined as team {owner.teamId}, but their saved "
+                                + $"kingdom is team {savedTeam}; moving them onto it");
+                owner.teamId = savedTeam;
+            }
+            catch (Exception ex) { Main.LogEx("adopting a saved team id", ex); }
+        }
+
+        /// <summary>
+        /// These flags include normal simulation rules, not just cheats. Restore vanilla defaults
+        /// for ordinary kingdoms, repairing saves that incorrectly recorded all flags as off.
+        /// Creative kingdoms retain their chosen settings.
+        /// </summary>
+        private static void RestoreNormalGameplayOptions()
+        {
+            try
+            {
+                foreach (var kingdom in Main.kCPlayers.Values)
+                {
+                    Player p = kingdom != null ? kingdom.inst : null;
+                    if (p == null || p.creativeMode) continue;
+                    p.ResetCreativeModeOptions();
+                }
+                Main.helper.Log("[LOAD] restored normal gameplay options, including road coverage, for non-creative kingdoms");
+            }
+            catch (Exception ex) { Main.LogEx("restoring normal gameplay options after a load", ex); }
+        }
+
         /// <summary>Restores every saved kingdom except the local one, which base.Unpack did.</summary>
         private void RestoreOtherKingdoms(string localSteamId)
         {
@@ -400,6 +526,131 @@ namespace KaCMultiplayer.LoadSaveOverrides
         }
 
         /// <summary>
+        /// Makes a kingdom that restored with a keep immediately playable again.
+        ///
+        /// The save can prove that buildings, banners and jobs came back while the live UI still
+        /// behaves like a new kingdom: build buttons disabled, ownership shaders stale, or the
+        /// player being asked for a fresh keep. Those gates all look at live Player fields, not the
+        /// raw save data, so refresh the small runtime pieces after keep relinking has established
+        /// which kingdom belongs to whom.
+        /// </summary>
+        private void RepairLoadedPlayability()
+        {
+            try
+            {
+                try { BuildMenuMaterials.Refresh(true); }
+                catch (Exception ex) { Main.LogEx("refreshing loaded build-menu materials", ex); }
+                foreach (var kp in Main.kCPlayers.Values)
+                {
+                    Player pl = kp != null ? kp.inst : null;
+                    if (pl == null || pl.keep == null) continue;
+
+                    EnsureToolRows(pl, kp.steamId);
+                    DetachJobRows(pl, kp.steamId);
+
+                    if (pl == Player.inst)
+                    {
+                        try { pl.RefreshVisibility(true); }
+                        catch (Exception ex) { Main.helper.Log("[LOAD] local visibility refresh failed: " + ex.Message); }
+                    }
+                }
+            }
+            catch (Exception ex) { Main.LogEx("repairing loaded kingdoms", ex); }
+        }
+
+        private static void DetachJobRows(Player pl, string steamId)
+        {
+            try
+            {
+                int landmasses = World.inst != null ? World.inst.NumLandMasses : 0;
+                if (landmasses <= 0 || pl.JobPriorityOrder == null || pl.JobEnabledFlag == null) return;
+
+                bool detached = false;
+                for (int lm = 0; lm < landmasses; lm++)
+                {
+                    if (lm >= pl.JobPriorityOrder.Length || lm >= pl.JobEnabledFlag.Length) continue;
+
+                    foreach (var other in Main.kCPlayers.Values)
+                    {
+                        Player op = other != null ? other.inst : null;
+                        if (op == null || op == pl) continue;
+
+                        if (op.JobPriorityOrder != null && lm < op.JobPriorityOrder.Length
+                            && ReferenceEquals(pl.JobPriorityOrder[lm], op.JobPriorityOrder[lm])
+                            && pl.JobPriorityOrder[lm] != null)
+                        {
+                            pl.JobPriorityOrder[lm] = (int[])pl.JobPriorityOrder[lm].Clone();
+                            detached = true;
+                        }
+
+                        if (op.JobEnabledFlag != null && lm < op.JobEnabledFlag.Length
+                            && ReferenceEquals(pl.JobEnabledFlag[lm], op.JobEnabledFlag[lm])
+                            && pl.JobEnabledFlag[lm] != null)
+                        {
+                            pl.JobEnabledFlag[lm] = (bool[])pl.JobEnabledFlag[lm].Clone();
+                            detached = true;
+                        }
+
+                        if (pl.JobCustomMaxEnabledFlag != null && op.JobCustomMaxEnabledFlag != null
+                            && lm < pl.JobCustomMaxEnabledFlag.Length && lm < op.JobCustomMaxEnabledFlag.Length
+                            && ReferenceEquals(pl.JobCustomMaxEnabledFlag[lm], op.JobCustomMaxEnabledFlag[lm])
+                            && pl.JobCustomMaxEnabledFlag[lm] != null)
+                        {
+                            pl.JobCustomMaxEnabledFlag[lm] = (bool[])pl.JobCustomMaxEnabledFlag[lm].Clone();
+                            detached = true;
+                        }
+                    }
+                }
+
+                if (detached)
+                    Main.helper.Log("[LOAD] detached shared job rows for " + steamId);
+            }
+            catch (Exception ex) { Main.LogEx("detaching shared job rows", ex); }
+        }
+
+        private static void EnsureToolRows(Player pl, string steamId)
+        {
+            int landmasses = World.inst != null ? World.inst.NumLandMasses : 0;
+            if (landmasses <= 0) return;
+
+            bool repaired = false;
+            if (pl.CanUseTools == null || pl.CanUseTools.Length < landmasses)
+            {
+                bool[][] rows = new bool[landmasses][];
+                int oldRows = pl.CanUseTools != null ? pl.CanUseTools.Length : 0;
+                for (int i = 0; i < oldRows && i < rows.Length; i++)
+                    rows[i] = pl.CanUseTools[i];
+                pl.CanUseTools = rows;
+                repaired = true;
+            }
+
+            for (int i = 0; i < landmasses; i++)
+            {
+                if (pl.CanUseTools[i] == null || pl.CanUseTools[i].Length == 0)
+                {
+                    pl.CanUseTools[i] = new bool[32];
+                    repaired = true;
+                }
+
+                bool any = false;
+                for (int j = 0; j < pl.CanUseTools[i].Length; j++)
+                {
+                    if (pl.CanUseTools[i][j]) { any = true; break; }
+                }
+
+                if (!any)
+                {
+                    for (int j = 0; j < pl.CanUseTools[i].Length; j++)
+                        pl.CanUseTools[i][j] = true;
+                    repaired = true;
+                }
+            }
+
+            if (repaired)
+                Main.helper.Log("[LOAD] repaired tool unlock rows for " + steamId + " (" + landmasses + " landmass(es))");
+        }
+
+        /// <summary>
         /// One line per kingdom confirming it came back whole.
         ///
         /// This is the check for the ordering risk noted on Unpack: a remote kingdom that restored
@@ -410,11 +661,37 @@ namespace KaCMultiplayer.LoadSaveOverrides
         {
             try
             {
+                int landmasses = World.inst != null ? World.inst.NumLandMasses : -1;
+                Main.helper.Log($"[LOADCHK] world has {landmasses} landmass(es)");
+
                 foreach (var kp in Main.kCPlayers.Values)
                 {
                     Player pl = kp.inst;
                     int bc = (pl != null && pl.Buildings != null) ? pl.Buildings.Count : -1;
                     Main.helper.Log($"Loaded player '{kp.name}' steamId={kp.steamId} teamId={pl?.PlayerLandmassOwner?.teamId} buildings={bc} keepLinked={(pl != null && pl.keep != null)} isLocal={(pl == Player.inst)}");
+
+                    // The state that decides whether a loaded kingdom LOOKS right, none of which is
+                    // visible in the line above, and all of which has been reported wrong after a
+                    // load.
+                    //
+                    // banner = -1 means vanilla's Unpack skipped SetIndexedBanner altogether (it
+                    // tests for exactly -1), so the kingdom has no livery: grey buildings, and
+                    // EnsureUnitsAreVisible then refuses to run for ANY kingdom while one is still
+                    // unbannered, which is villagers that simulate without ever drawing.
+                    // armyMaterial is that same story from the other end. jobRows short of the
+                    // landmass count is the job panel with one row in it. flagSubscribers = 0 means
+                    // RefreshAllBanners has nothing to repaint for this kingdom, which is why its
+                    // flags keep somebody else's colours.
+                    if (pl == null) continue;
+
+                    LandmassOwner lo = pl.PlayerLandmassOwner;
+                    int jobRows = pl.JobPriorityOrder != null ? pl.JobPriorityOrder.Length : -1;
+                    int flagSubs = pl.updateBanner != null ? pl.updateBanner.GetInvocationList().Length : 0;
+
+                    Main.helper.Log($"[LOADCHK]   banner={(lo != null ? lo.bannerIdx : -1)} "
+                                    + $"armyMaterial={(lo != null && lo.ArmyMaterial != null)} "
+                                    + $"jobRows={jobRows} (world wants {landmasses}) "
+                                    + $"flagSubscribers={flagSubs}");
                 }
             }
             catch (Exception e) { Main.helper.Log("Player summary log error: " + e.Message); }
@@ -443,20 +720,40 @@ namespace KaCMultiplayer.LoadSaveOverrides
             }
 
             Player previous = Player.inst;
+            bool wasRestoring = RestoringAdditionalKingdom;
+            int jobsBefore = CountRegisteredJobs();
             try
             {
+                RestoringAdditionalKingdom = true;
                 Player.inst = player.inst;
                 saved.Unpack(player.inst);
             }
             catch (Exception ex)
             {
+                // NOT rethrown. One kingdom that fails to restore must not abandon the whole load.
+                //
+                // This is the policy the rest of this file already states, in PrepareKingdoms:
+                // "a kingdom that is missing or fails to reset must not abort the LOAD ... which is
+                // far worse than one kingdom starting dirty". This path was the exception to it,
+                // and the cost was real. A single throw from deep inside vanilla (a keep placement
+                // hitting a null prefab, see SessionPlayer.CopySharedSceneRefs) propagated out
+                // through RestoreOtherKingdoms and SessionSave.Unpack, so everything after it was
+                // abandoned: a guest joining a SAVED game landed in a half-built world with a
+                // half-built UI, and the only trace was one line in Player.log.
+                //
+                // The kingdom that failed is left as far as it got, which is the same state a
+                // missing kingdom would be in, and the log says which one and why.
                 Main.LogEx($"unpacking absent kingdom {steamId}", ex);
-                throw;
+                Main.helper.Log($"[LOAD] kingdom {steamId} did not restore cleanly; carrying on so the "
+                                + "rest of the world still loads");
             }
             finally
             {
                 Player.inst = previous;
+                RestoringAdditionalKingdom = wasRestoring;
             }
+
+            Main.helper.Log($"[LOADJOBS] kingdom {steamId}: shared jobs before={jobsBefore}, after={CountRegisteredJobs()}");
 
             player.banner = player.inst.PlayerLandmassOwner.bannerIdx;
 
@@ -464,6 +761,17 @@ namespace KaCMultiplayer.LoadSaveOverrides
             // absent player appear under your kingdom's name.
             if (kingdomNames.ContainsKey(steamId))
                 player.kingdomName = kingdomNames[steamId];
+        }
+
+        private static int CountRegisteredJobs()
+        {
+            if (JobSystem.inst == null || JobSystem.inst.jobs == null) return 0;
+            int count = 0;
+            var jobs = JobSystem.inst.jobs;
+            for (int lm = 0; lm < jobs.Count; lm++)
+                for (int category = 0; category < jobs.data[lm].Count; category++)
+                    count += jobs.data[lm].data[category].Count;
+            return count;
         }
 
     }

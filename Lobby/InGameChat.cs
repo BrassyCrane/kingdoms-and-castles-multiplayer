@@ -266,6 +266,15 @@ namespace KaCMultiplayer
 
             if (text.Length == 0) return;
 
+            // Diplomacy is typed rather than clicked, because the diplomacy row prefab has three
+            // buttons and no number field, and ModalDialog has a single button and so cannot ask
+            // Accept-or-Refuse. Commands need no new prefab art, carry an arbitrary amount, and
+            // read back in the chat log as a record of what was agreed.
+            if (text[0] == '/')
+            {
+                if (KaCMultiplayer.Net.PlayerRelations.HandleChatCommand(text)) return;
+            }
+
             try
             {
                 NetRouter.Send(new ChatSayMessage

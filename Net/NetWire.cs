@@ -117,6 +117,38 @@ namespace KaCMultiplayer.Net
             return result;
         }
 
+        public static Message AddQuaternionList(this Message m, List<Quaternion> values)
+        {
+            int count = values == null ? 0 : values.Count;
+            m.AddInt(count);
+            for (int i = 0; i < count; i++) m.AddQuaternion(values[i]);
+            return m;
+        }
+
+        public static List<Quaternion> GetQuaternionList(this Message m)
+        {
+            int count = m.GetInt();
+            List<Quaternion> result = new List<Quaternion>(count < 0 ? 0 : count);
+            for (int i = 0; i < count; i++) result.Add(m.GetQuaternion());
+            return result;
+        }
+
+        public static Message AddBoolList(this Message m, List<bool> values)
+        {
+            int count = values == null ? 0 : values.Count;
+            m.AddInt(count);
+            for (int i = 0; i < count; i++) m.AddBool(values[i]);
+            return m;
+        }
+
+        public static List<bool> GetBoolList(this Message m)
+        {
+            int count = m.GetInt();
+            List<bool> result = new List<bool>(count < 0 ? 0 : count);
+            for (int i = 0; i < count; i++) result.Add(m.GetBool());
+            return result;
+        }
+
         public static Message AddIntList(this Message m, List<int> values)
         {
             int count = values == null ? 0 : values.Count;
