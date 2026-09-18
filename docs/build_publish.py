@@ -32,9 +32,29 @@ def wanted(rel, name):
     return os.path.splitext(name)[1].lower() in ALLOWED_EXT
 
 
+def current_branch():
+    """The branch checked out in SRC, or None if git cannot say."""
+    try:
+        import subprocess
+        out = subprocess.run(["git", "-C", SRC, "branch", "--show-current"],
+                             capture_output=True, text=True, timeout=10)
+        return out.stdout.strip() or None
+    except Exception:
+        return None
+
+
 def main():
     if os.path.exists(DST):
         sys.exit(f"{DST} already exists - remove it first, refusing to overwrite")
+
+    # The copy is taken from the WORKING FOLDER, so it ships whatever branch happens to be checked
+    # out. On 2026-09-18 that was dev, and a release build very nearly went out carrying an untested
+    # change. Releases come from main; anything else has to be asked for by name.
+    branch = current_branch()
+    if branch != "main" and "--any-branch" not in sys.argv:
+        sys.exit(f"the working folder is on branch '{branch}', not main - switch to main "
+                 f"(git switch main) or pass --any-branch for a deliberate test build")
+    print(f"building from branch: {branch}")
 
     copied, skipped = [], []
     for root, dirs, files in os.walk(SRC):
