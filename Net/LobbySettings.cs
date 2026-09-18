@@ -98,6 +98,7 @@ namespace KaCMultiplayer.Net
             MaxPlayers = MinPlayers;
             Password = " ";
             WorldRivers = World.MapRiverLakes.Some;
+            FogOfWar = true;
         }
 
         /// <summary>

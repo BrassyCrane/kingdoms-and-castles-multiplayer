@@ -170,6 +170,20 @@ namespace KaCMultiplayer
         {
             Main.helper.Log("Serverbrowser scene loaded");
 
+            // A local mod loads earlier than a workshop one, early enough that this can run before
+            // the main menu scene has built its UI. There is nothing to graft the browser onto yet,
+            // and MenuUi.Find would hand back null for every lookup below.
+            //
+            // Returning is safe rather than merely quiet: the mod loader calls SceneLoaded on EVERY
+            // scene load, so the menu scene gets its own call, and that is the one that finds a UI.
+            // The teardown below has nothing to tear down on this pass either, since no screens
+            // were built.
+            if (MenuUi.Root == null)
+            {
+                Main.helper.Log("Serverbrowser: the main menu UI is not up yet, deferring to the next scene load");
+                return;
+            }
+
             // The mod loader calls SceneLoaded on EVERY scene load, so starting a game and coming
             // back to the menu runs this again. Tear the previous generation down first.
             //

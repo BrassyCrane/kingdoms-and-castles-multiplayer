@@ -147,6 +147,7 @@ namespace KaCMultiplayer.Net
                 KaCMultiplayer.Combat.CombatSync.Reset();
                 KaCMultiplayer.Combat.FrozenKingdoms.Reset();
                 KaCMultiplayer.Combat.ArmyPositionSync.Reset();
+                KaCMultiplayer.Combat.DragonFlightSync.Reset();
                 StreamerEffectSync.Reset();
                 Main.BuildingCompleteBuildHook.Reset();
                 InGameChat.Reset();

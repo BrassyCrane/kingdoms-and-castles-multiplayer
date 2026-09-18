@@ -553,7 +553,9 @@ namespace KaCMultiplayer.Combat
                     if (m.Lives[i] < w.life) w.life = m.Lives[i];
                 }
 
-                NetLog.Info("wolf pack: " + m.Den + " -> " + shared + " wolf/wolves updated");
+                // Deliberately quiet on success. This message can arrive many times per second for
+                // an unchanged pack, and the spam buries the load diagnostics we need after a
+                // resume or saved-game join. Exceptions are still logged below.
             }
             catch (Exception ex) { NetLog.Error("wolf pack health", ex); }
         }

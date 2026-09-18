@@ -348,9 +348,18 @@ namespace KaCMultiplayer
                                 {
                                     if (player == null || player.inst == null
                                         || player.inst.PlayerLandmassOwner == null) continue;
-                                    if (player.inst.PlayerLandmassOwner.teamId == localTeam) continue;
-
-                                    player.inst.Reset();
+                                    // The local player used to be skipped here, on the assumption
+                                    // that the game resets its own Player. It does not on a map
+                                    // reroll, so the host's previous kingdom survived into the new
+                                    // world: after loading a save and then rerolling, the old city
+                                    // was still standing on the new map, an orphaned ghost town the
+                                    // player owned nothing of ("I just made this world and this
+                                    // kingdom was already here"). Every kingdom is cleared now.
+                                    //
+                                    // Safe to include ourselves because ResetKingdomSafely holds
+                                    // the world's cave container out of Reset's reach; calling
+                                    // Reset directly is what broke harvesting across the session.
+                                    Main.ResetKingdomSafely(player.inst);
                                 }
                                 catch (Exception ex)
                                 {
@@ -409,6 +418,12 @@ namespace KaCMultiplayer
                 // timer. InvokeRepeating resolves by name, so this string has to track the
                 // method, a rename that misses it fails silently at runtime, not at compile.
                 SyncSettings();
+
+                // CancelInvoke first, because InvokeRepeating stacks rather than replaces. If
+                // Awake runs a second time on an object that survived, the result is two timers
+                // and the settings go out twice a second instead of once. That is what the logs
+                // showed, and it is a no-op on the normal single-Awake path.
+                CancelInvoke("SyncSettings");
                 InvokeRepeating("SyncSettings", 0, 1f);
 
                 // Details can arrive before this prefab is wired: clicking a row in the browser
@@ -480,6 +495,23 @@ namespace KaCMultiplayer
         {
             try
             {
+                // Once play begins this tick has nothing left to do, and doing it anyway costs
+                // real bandwidth and buries the log.
+                //
+                // Everything below is lobby work: the controls are unreachable, the Start button
+                // has already been pressed, and ApplyWorldSettings refuses to touch difficulty in
+                // play mode anyway. The one effect that did survive into the game was the host
+                // rebroadcasting its settings on every tick for the whole session, which arrived
+                // as roughly 600 logged messages in five minutes. The log is the main way this
+                // mod gets debugged, so drowning it is a real cost.
+                //
+                // Joining or reconnecting mid-game is unaffected: the host sends the settings
+                // explicitly in the join catch-up sequence (see SessionHandlers), so a newcomer
+                // never depended on catching one of these ticks. Password state is read off the
+                // controls here, so it now freezes at whatever the lobby settled on, which is
+                // correct, the password cannot be edited once the lobby screen is gone.
+                if (GameState.inst != null && GameState.inst.IsPlayMode()) return;
+
                 if (NetHost.IsRunning)
                     ReadSettingsFromControls();
                 else
@@ -583,6 +615,20 @@ namespace KaCMultiplayer
             World.inst.mapBias = s.WorldType;
             World.inst.mapRiverLakes = s.WorldRivers;
             World.inst.mapSize = s.WorldSize;
+
+            // Difficulty is settled in the lobby and owned by the game once play begins.
+            //
+            // This runs on EVERY lobby-settings broadcast, and those go out roughly twice a
+            // second. On a loaded game the save restores the real difficulty and then the very
+            // next broadcast overwrote it with whatever the lobby happened to hold, which for a
+            // lobby that was never told about the save is 0, Peaceful. A Hard world became
+            // Peaceful within half a second of loading and would not stay changed, because every
+            // later broadcast put it back.
+            //
+            // In the lobby this still applies normally, which is how a guest receives the host's
+            // choice. LobbySettings.Current is also seeded from the save on load (SessionSave), so
+            // the two agree rather than fight.
+            if (GameState.inst != null && GameState.inst.IsPlayMode()) return;
 
             Player.inst.difficulty = (Player.Difficulty)s.Difficulty;
         }

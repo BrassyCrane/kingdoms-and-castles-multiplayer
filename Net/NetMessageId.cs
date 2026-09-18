@@ -82,9 +82,11 @@
         // differ only in which method the receiver calls.
         DragonSpawn = 1120,
         DragonHealth = 1121,
+        DragonFlight = 1122,
 
         // 1130-1139  diplomacy
         PlayerRelation = 1130,
+        DiplomacyDeal = 1131,
 
         // 1140-1149  siege catapults
         // Catapults are built from a barracks, and that barracks only ticks on its owner's

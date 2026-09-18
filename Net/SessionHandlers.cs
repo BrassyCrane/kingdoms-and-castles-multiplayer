@@ -83,10 +83,15 @@ namespace KaCMultiplayer.Net
             }
             else
             {
-                // LoadingSave was set but the server isn't up yet. Nothing moves the player on,
-                // so they sit in the lobby with no explanation.
-                NetLog.Warn("handshake routing -> NOWHERE: loading a save but the server is not " +
-                            "running, so the player is stranded on the lobby screen");
+                // Joining a host that is resuming a save. Do NOT send them to NameAndBanner: their
+                // kingdom already exists in that save and naming a new one is how a returning
+                // player ends up placing a second keep beside their own city.
+                //
+                // Nothing to decide yet either, because the save has not arrived. It is streamed
+                // in chunks (see SaveTransfer) and SessionSave.Unpack then matches this player by
+                // Steam id and restores their kingdom, or sends them to NameAndBanner if the save
+                // genuinely has no kingdom for them. The lobby is the right place to wait.
+                NetLog.Info("handshake routing -> waiting for the host's save; kingdom comes from it");
             }
 
             // Announce our kingdom name, then ourselves. Order matters only in that both

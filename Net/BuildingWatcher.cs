@@ -78,6 +78,11 @@ namespace KaCMultiplayer.Net
         {
             if (building == null || !NetRouter.IsConnected) return;
 
+            // Roads are placed in full by BuildPlaceMessage and then become complete terrain-like
+            // objects. Polling their construction state can drive duplicate CompleteBuild calls a
+            // few seconds later, which makes multiplayer road placement stop behaving.
+            if (string.Equals(building.UniqueName, "road", StringComparison.OrdinalIgnoreCase)) return;
+
             // Only report our own buildings. Everyone else's arrive as snapshots from them.
             try
             {
@@ -189,3 +194,4 @@ namespace KaCMultiplayer.Net
         }
     }
 }
+
