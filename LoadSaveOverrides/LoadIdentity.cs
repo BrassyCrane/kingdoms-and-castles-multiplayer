@@ -85,9 +85,22 @@ namespace KaCMultiplayer.LoadSaveOverrides
         /// Accepts the host's assignment for a player, so every machine agrees on who owns which
         /// team without each having to re-derive it from a client id that may have been recycled.
         ///
-        /// Only ever fills a gap. Changing a team already in use would strand the kingdom built
-        /// under the old one, so a disagreement is reported and the existing value kept, that is a
-        /// bug worth seeing in the log rather than papering over.
+        /// THE HOST DECIDES, and this used to refuse to believe it. A client that reconnects is
+        /// given a NEW Riptide client id, and its own registry was cleared on the way out, so it
+        /// re-derives clientId + 4 and gets a different number from the one the host has been
+        /// holding for that steamId since their first connection. The host is right: remembering a
+        /// team across reconnects is exactly what this registry is for. The client was then told
+        /// so, wrote "keeping ours" in the log, and carried on disagreeing for the rest of the
+        /// session.
+        ///
+        /// What that costs: materials, landmass ownership, dock policy and combat arbitration are
+        /// all looked up by team. A player who is team 9 to themselves and team 6 to everybody else
+        /// is two different kingdoms as far as those lookups are concerned.
+        ///
+        /// The old caution was not wrong, only too broad. Re-pinning a team that a kingdom has
+        /// ALREADY been built on would strand that kingdom, so that case still refuses and still
+        /// says so. Before anything is built - which is where this actually happens, in the lobby,
+        /// during a join - there is nothing to strand and the host's answer simply wins.
         /// </summary>
         public static void AdoptAssignedTeam(string steamId, int teamId)
         {
@@ -97,13 +110,109 @@ namespace KaCMultiplayer.LoadSaveOverrides
             int existing;
             if (sessionTeamBySteamId.TryGetValue(steamId, out existing))
             {
-                if (existing != teamId)
-                    Main.helper.Log($"[LOADID] host says {steamId} is team {teamId} but we have {existing}, keeping ours");
+                if (existing == teamId) return;   // already agreed
+
+                // We ARE the host: ours is the authoritative answer, and this call is our own
+                // roster coming back to us.
+                if (NetHost.IsRunning)
+                {
+                    Main.helper.Log($"[LOADID] roster says {steamId} is team {teamId} but we are the host "
+                                    + $"and have {existing}; ours stands");
+                    return;
+                }
+
+                if (KingdomExistsOn(existing))
+                {
+                    Main.helper.Log($"[LOADID] host says {steamId} is team {teamId} but a kingdom is already "
+                                    + $"built on team {existing} here; keeping ours rather than stranding it");
+                    return;
+                }
+
+                sessionTeamBySteamId[steamId] = teamId;
+                RetagPlayerObject(steamId, existing, teamId);
+
+                Main.helper.Log($"[LOADID] host says {steamId} is team {teamId}, we had {existing}; "
+                                + "adopting theirs, nothing is built on it yet");
                 return;
             }
 
             sessionTeamBySteamId[steamId] = teamId;
             Main.helper.Log($"[LOADID] adopted host assignment {steamId} -> teamId {teamId}");
+        }
+
+        /// <summary>
+        /// Whether a kingdom has actually been built on this team on this machine.
+        ///
+        /// A keep or a single building is enough: both carry the team, and both would be orphaned
+        /// by moving their owner to a different number. A Player object that merely EXISTS is not
+        /// enough, because one is created for every peer the moment they appear in the roster,
+        /// before they own anything at all.
+        /// </summary>
+        private static bool KingdomExistsOn(int team)
+        {
+            try
+            {
+                if (HasSomethingBuilt(Player.inst, team)) return true;
+
+                foreach (SessionPlayer kp in Main.kCPlayers.Values)
+                {
+                    if (kp == null) continue;
+                    if (HasSomethingBuilt(kp.inst, team)) return true;
+                }
+            }
+            catch (Exception e)
+            {
+                // On any doubt, refuse to re-pin. Keeping a disagreement is recoverable; stranding
+                // a kingdom is not.
+                Main.helper.Log("[LOADID] could not tell whether team " + team + " has a kingdom ("
+                                + e.Message + "); assuming it does");
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool HasSomethingBuilt(Player p, int team)
+        {
+            if (p == null || p.PlayerLandmassOwner == null) return false;
+            if (p.PlayerLandmassOwner.teamId != team) return false;
+
+            return p.keep != null || (p.Buildings != null && p.Buildings.Count > 0);
+        }
+
+        /// <summary>
+        /// Moves an already-created Player object onto the team we have just adopted.
+        ///
+        /// The registry and the object have to agree. The local player's team is written at the
+        /// handshake, before the roster arrives, and a remote player's is written by the
+        /// SessionPlayer constructor; changing only the dictionary would leave the object still
+        /// answering to the number we just abandoned.
+        /// </summary>
+        private static void RetagPlayerObject(string steamId, int oldTeam, int newTeam)
+        {
+            try
+            {
+                if (steamId == Main.PlayerSteamID
+                    && Player.inst != null && Player.inst.PlayerLandmassOwner != null
+                    && Player.inst.PlayerLandmassOwner.teamId == oldTeam)
+                {
+                    Player.inst.PlayerLandmassOwner.teamId = newTeam;
+                    Main.helper.Log($"[LOADID] our own kingdom re-tagged from team {oldTeam} to {newTeam}");
+                }
+
+                SessionPlayer kp;
+                if (Main.kCPlayers.TryGetValue(steamId, out kp)
+                    && kp != null && kp.inst != null && kp.inst.PlayerLandmassOwner != null
+                    && kp.inst.PlayerLandmassOwner.teamId == oldTeam)
+                {
+                    kp.inst.PlayerLandmassOwner.teamId = newTeam;
+                    Main.helper.Log($"[LOADID] {steamId}'s kingdom object re-tagged from team {oldTeam} to {newTeam}");
+                }
+            }
+            catch (Exception e)
+            {
+                Main.helper.Log("[LOADID] could not re-tag the player object: " + e.Message);
+            }
         }
 
         /// <summary>

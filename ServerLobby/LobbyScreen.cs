@@ -586,11 +586,36 @@ namespace KaCMultiplayer
             // every tick rather than at some point in between.
             s.Locked = LockedFromPassword();
 
-            s.Difficulty = DifficultyPicker.value;
-            s.WorldSeed = SeedBox.text;
-            s.WorldSize = (World.MapSize)SizePicker.value;
-            s.WorldRivers = (World.MapRiverLakes)RiversPicker.value;
-            s.PlacementType = PlacementPicker.value;
+            // Which way the world settings flow depends on whether a save is being loaded.
+            //
+            // Greying the controls out was only half of "the save decides". They were still READ
+            // back into the settings on every tick, so a disabled picker still showing Peaceful
+            // overwrote the difficulty the save had just restored, and then the host broadcast that
+            // Peaceful to everyone. A Hard save came back Peaceful and could not be put right,
+            // because difficulty is chosen at world creation and there is no way back to it once
+            // play has begun. Dragons do not spawn on Peaceful at all, so this is not cosmetic.
+            //
+            // SessionSave.Unpack has already put the save's own values into LobbySettings by the
+            // time this runs. So when a save is in play the controls are told what the save chose
+            // rather than asked what they are showing, which is what the comment above always
+            // claimed was happening.
+            if (canEditWorld)
+            {
+                s.Difficulty = DifficultyPicker.value;
+                s.WorldSeed = SeedBox.text;
+                s.WorldSize = (World.MapSize)SizePicker.value;
+                s.WorldRivers = (World.MapRiverLakes)RiversPicker.value;
+                s.PlacementType = PlacementPicker.value;
+            }
+            else
+            {
+                if (DifficultyPicker.value != s.Difficulty) DifficultyPicker.value = s.Difficulty;
+                if (SeedBox.text != s.WorldSeed) SeedBox.text = s.WorldSeed;
+                if (SizePicker.value != (int)s.WorldSize) SizePicker.value = (int)s.WorldSize;
+                if (RiversPicker.value != (int)s.WorldRivers) RiversPicker.value = (int)s.WorldRivers;
+                if (PlacementPicker.value != s.PlacementType) PlacementPicker.value = s.PlacementType;
+            }
+
             s.WorldType = MultiplayerMapBias;   // not a player choice, see MultiplayerMapBias
 
             ApplyWorldSettings(s);

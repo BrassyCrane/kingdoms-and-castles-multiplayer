@@ -13,6 +13,7 @@ namespace KaCMultiplayer.Net.Messages
     /// </summary>
     public class PlayerRelationMessage : IOriginated
     {
+        public const int DeclineAlliance = -1;
         public NetMessageId Id { get { return NetMessageId.PlayerRelation; } }
 
         public ushort Origin { get; set; }
@@ -20,8 +21,23 @@ namespace KaCMultiplayer.Net.Messages
         public int TeamA;
         public int TeamB;
 
-        /// <summary>A <c>World.Relations</c> value: 0 Neutral, 1 Allies, 2 Enemy.</summary>
+        /// <summary>
+        /// A <c>World.Relations</c> value: 0 Neutral, 1 Allies, 2 Enemy. Also carries
+        /// <see cref="DeclineAlliance"/> (-1), which is not a relation at all: it withdraws a
+        /// pending offer and leaves the pair's standing exactly as it was, so refusing an
+        /// alliance cannot end a war or undo a peace by accident.
+        /// </summary>
         public int Relation;
+
+        /// <summary>
+        /// True when this is STATE, not a request.
+        ///
+        /// A joiner is sent the relations that already exist, and those must be adopted as they
+        /// stand. Put through the consent machinery instead, an existing alliance looks exactly
+        /// like somebody proposing one: it records a pending offer, waits for a reply that is never
+        /// coming, and does not apply the alliance the two kingdoms already had.
+        /// </summary>
+        public bool Sync;
 
         public void Serialize(Message m)
         {
@@ -29,6 +45,7 @@ namespace KaCMultiplayer.Net.Messages
             m.AddInt(TeamA);
             m.AddInt(TeamB);
             m.AddInt(Relation);
+            m.AddBool(Sync);
         }
 
         public void Deserialize(Message m)
@@ -37,6 +54,7 @@ namespace KaCMultiplayer.Net.Messages
             TeamA = m.GetInt();
             TeamB = m.GetInt();
             Relation = m.GetInt();
+            Sync = m.GetBool();
         }
     }
 }

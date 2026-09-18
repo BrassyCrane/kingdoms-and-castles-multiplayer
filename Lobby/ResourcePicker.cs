@@ -37,6 +37,17 @@ namespace KaCMultiplayer.Lobby
         private static readonly List<Button> amountButtons = new List<Button>();
         private static TextMeshProUGUI summary;
 
+        /// <summary>
+        /// True when the picker was opened to GIVE rather than to ask.
+        ///
+        /// The grid is identical either way, so the window is shared rather than duplicated; only
+        /// its heading and the two action buttons change, and the buttons read this at click time
+        /// so one set of handlers serves both.
+        /// </summary>
+        private static bool aidMode;
+
+        private static TextMeshProUGUI titleLabel, primaryLabel, secondaryLabel;
+
         private static readonly Color cPanel = new Color(0.10f, 0.14f, 0.20f, 0.97f);
         private static readonly Color cBorder = new Color(0.27f, 0.35f, 0.46f, 1f);
         private static readonly Color cButton = new Color(0.16f, 0.22f, 0.30f, 1f);
@@ -45,11 +56,18 @@ namespace KaCMultiplayer.Lobby
 
         public static bool IsOpen { get { return root != null && root.activeSelf; } }
 
-        /// <summary>Opens the picker for one target kingdom.</summary>
+        /// <summary>Opens the picker to demand from one target kingdom.</summary>
         public static void Open(int fromTeam, int toTeam)
+        {
+            Open(fromTeam, toTeam, false);
+        }
+
+        /// <summary>Opens the picker, either to demand from a kingdom or to send it aid.</summary>
+        public static void Open(int fromTeam, int toTeam, bool aid)
         {
             localTeam = fromTeam;
             targetTeam = toTeam;
+            aidMode = aid;
             chosen = FreeResourceType.Gold;
             chosenAmount = 100;
 
@@ -82,20 +100,69 @@ namespace KaCMultiplayer.Lobby
             try { if (root != null) UnityEngine.Object.Destroy(root); }
             catch { }
 
+            try { if (canvasObj != null) UnityEngine.Object.Destroy(canvasObj); }
+            catch { }
+
+            canvasObj = null;
+
             root = null;
             summary = null;
+            titleLabel = null;
+            primaryLabel = null;
+            secondaryLabel = null;
             resourceButtons.Clear();
             amountButtons.Clear();
         }
 
+        /// <summary>
+        /// The picker's own screen-space canvas.
+        ///
+        /// It used to be parented to MenuUi.Root, which is the MAIN MENU's UI. That object is
+        /// switched off while a game is running, so during play the picker was built correctly,
+        /// activated correctly, and drawn nowhere: clicking Demand appeared to do nothing at all.
+        ///
+        /// Its own overlay canvas is what AllianceRequestWindow already does, for the same reason
+        /// and with the same result, and it removes the dependency on the game's menu hierarchy
+        /// entirely. Ordered just under the alliance prompt so a request that arrives while this is
+        /// open still lands on top.
+        /// </summary>
+        private static GameObject canvasObj;
+
+        private static Transform EnsureCanvas()
+        {
+            if (canvasObj != null) return canvasObj.transform;
+
+            try
+            {
+                canvasObj = new GameObject("ResourcePickerCanvas",
+                    typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+
+                Canvas c = canvasObj.GetComponent<Canvas>();
+                c.renderMode = RenderMode.ScreenSpaceOverlay;
+                c.sortingOrder = 5090;
+
+                CanvasScaler scaler = canvasObj.GetComponent<CanvasScaler>();
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                scaler.referenceResolution = new Vector2(1920f, 1080f);
+                scaler.matchWidthOrHeight = 0.5f;
+
+                return canvasObj.transform;
+            }
+            catch (Exception e)
+            {
+                NetLog.Error("creating the resource picker canvas", e);
+                return null;
+            }
+        }
+
         private static void Build()
         {
-            Transform parent = MenuUi.Root;
-            if (parent == null) { NetLog.Warn("resource picker: no menu UI to attach to"); return; }
+            Transform parent = EnsureCanvas();
+            if (parent == null) { NetLog.Warn("resource picker: could not create a canvas"); return; }
 
             root = Panel("ResourcePicker", parent, 560f, 430f);
 
-            Label(root.transform, "Demand from another kingdom", 20f, FontStyles.Bold, 0f, 180f, 520f, 34f);
+            titleLabel = Label(root.transform, "Demand from another kingdom", 20f, FontStyles.Bold, 0f, 180f, 520f, 34f);
 
             // Resources, four to a row.
             resourceButtons.Clear();
@@ -129,26 +196,78 @@ namespace KaCMultiplayer.Lobby
 
             summary = Label(root.transform, "", 17f, FontStyles.Normal, 0f, -104f, 520f, 30f);
 
-            MakeButton(root.transform, "Demand it", -110f, -160f, 190f, 40f, delegate
+            // A donor built once and harvested three times, purely for its button's real art (see
+            // KacModalStyle). The grid above stays the plain style it has always been: it is a
+            // custom resource-type toggle, not a plain action, so there is no real button in the
+            // bundle it could honestly borrow from, and it is the one part of this screen that has
+            // already caused a real, shipped bug (a Demand button once cloned inactive). The three
+            // buttons a player actually commits with are worth the real art; the grid is left
+            // alone rather than risked for a cosmetic match.
+            KacModalStyle.Panel donor = KacModalStyle.Build(root.transform);
+
+            // Both handlers read aidMode when they are CLICKED rather than when they are built,
+            // so the same two buttons serve a demand and a gift and simply swap which is which.
+            Button primary = ActionButton(donor, "Demand it", -110f, -160f, delegate
             {
                 PlayerRelations.Send(localTeam, targetTeam,
-                    Net.Messages.DealKind.Demand, chosenAmount, chosen);
+                    aidMode ? Net.Messages.DealKind.Offer : Net.Messages.DealKind.Demand,
+                    chosenAmount, chosen);
                 Close();
             });
+            primaryLabel = primary == null ? null : primary.GetComponentInChildren<TextMeshProUGUI>();
 
-            MakeButton(root.transform, "Offer it instead", 110f, -160f, 190f, 40f, delegate
+            Button secondary = ActionButton(donor, "Offer it instead", 110f, -160f, delegate
             {
                 PlayerRelations.Send(localTeam, targetTeam,
-                    Net.Messages.DealKind.Offer, chosenAmount, chosen);
+                    aidMode ? Net.Messages.DealKind.Demand : Net.Messages.DealKind.Offer,
+                    chosenAmount, chosen);
                 Close();
             });
+            secondaryLabel = secondary == null ? null : secondary.GetComponentInChildren<TextMeshProUGUI>();
 
-            MakeButton(root.transform, "Cancel", 0f, -205f, 120f, 30f, delegate { Close(); });
+            ActionButton(donor, "Cancel", 0f, -205f, delegate { Close(); });
+
+            // The donor's own panel, backdrop, title and description are of no further use once
+            // its button has been cloned three times; the clones were reparented onto this screen
+            // as each was made, so destroying it here takes nothing they depend on with it.
+            if (donor != null) UnityEngine.Object.Destroy(donor.Root);
+        }
+
+        /// <summary>
+        /// One of the three commit buttons (Demand it / Offer it instead / Cancel). Clones its
+        /// art from <paramref name="donor"/> when one was built; falls back to the plain flat
+        /// button, unchanged from before that art existed, if it was not.
+        /// </summary>
+        private static Button ActionButton(KacModalStyle.Panel donor, string caption, float x, float y,
+                                           UnityEngine.Events.UnityAction onClick)
+        {
+            if (donor != null)
+            {
+                Button real = KacModalStyle.CloneButton(donor, caption, root.transform);
+                if (real != null)
+                {
+                    RectTransform rt = real.GetComponent<RectTransform>();
+                    if (rt != null) rt.anchoredPosition = new Vector2(x, y);
+
+                    KacModalStyle.SetLabel(real, caption);
+                    KacModalStyle.SetClick(real, onClick);
+                    return real;
+                }
+            }
+
+            return MakeButton(root.transform, caption, x, y, 190f, 40f, onClick);
         }
 
         /// <summary>Repaints the selection highlight and the sentence under it.</summary>
         private static void Refresh()
         {
+            // Retitled per opening, because the same grid means two opposite things and the only
+            // thing telling them apart is the wording.
+            if (titleLabel != null)
+                titleLabel.text = aidMode ? "Send aid to another kingdom" : "Demand from another kingdom";
+            if (primaryLabel != null) primaryLabel.text = aidMode ? "Send it" : "Demand it";
+            if (secondaryLabel != null) secondaryLabel.text = aidMode ? "Demand it instead" : "Offer it instead";
+
             FreeResourceType[] types = PlayerRelations.Demandable;
             for (int i = 0; i < resourceButtons.Count && i < types.Length; i++)
                 Tint(resourceButtons[i], types[i] == chosen);

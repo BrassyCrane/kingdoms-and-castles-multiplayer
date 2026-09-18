@@ -289,7 +289,7 @@ namespace KaCMultiplayer
                 load.interactable = true;
 
                 TMPro.TextMeshProUGUI loadLabel = load.GetComponentInChildren<TMPro.TextMeshProUGUI>();
-                if (loadLabel != null) loadLabel.text = "Load (beta)";
+                if (loadLabel != null) loadLabel.text = "Load";
 
                 OnClick(load, "load lobby", () => SteamLobby.Active.CreateLobby(true));
             }

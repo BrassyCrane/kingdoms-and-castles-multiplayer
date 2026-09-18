@@ -122,8 +122,9 @@ namespace KaCMultiplayer.Net
             NetRegistry.OnClient<WeatherSetMessage>(NetMessageId.WeatherSet,
                 (m, ctx) => ApplyWeather(m));
 
-            // Dragons. Must include the sender: on a non-host client the Harmony Prefix
-            // blocked the local spawn, so the echo is the only thing that spawns it.
+            // Dragons, which only the host ever spawns or announces. The relay reaches every
+            // client; the sender discards its own echo in ApplyDragonSpawn rather than building a
+            // second dragon on top of the one it already has.
             NetRegistry.Register<DragonSpawnMessage>(NetMessageId.DragonSpawn);
             NetRegistry.OnServer<DragonSpawnMessage>(NetMessageId.DragonSpawn,
                 (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) ApplyDragonSpawn(m); });
@@ -296,6 +297,14 @@ namespace KaCMultiplayer.Net
             NetRegistry.OnClient<TerrainDemolishMessage>(NetMessageId.TerrainDemolish,
                 (m, ctx) => ApplyTerrainDemolish(m));
 
+            // Export prices. Relayed to everyone including the sender, whose own copy is
+            // already correct and simply re-adopts what it sent; one path, no special case.
+            NetRegistry.Register<ExportPricesMessage>(NetMessageId.ExportPrices);
+            NetRegistry.OnServer<ExportPricesMessage>(NetMessageId.ExportPrices,
+                (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) KaCMultiplayer.Trade.ExportPrices.ApplyRemote(m); });
+            NetRegistry.OnClient<ExportPricesMessage>(NetMessageId.ExportPrices,
+                (m, ctx) => KaCMultiplayer.Trade.ExportPrices.ApplyRemote(m));
+
             NetRegistry.Register<ShipMoveMessage>(NetMessageId.ShipMove);
             NetRegistry.OnServer<ShipMoveMessage>(NetMessageId.ShipMove,
                 (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) ApplyShipMove(m); });
@@ -401,6 +410,21 @@ namespace KaCMultiplayer.Net
             NetRegistry.Register<SaveTransferMessage>(NetMessageId.SaveTransfer);
             NetRegistry.OnClient<SaveTransferMessage>(NetMessageId.SaveTransfer,
                 (m, ctx) => SaveTransfer.Apply(m));
+
+            // The repair path. Only the host can answer it, and it answers the sender alone.
+            //
+            // UNRELIABLE ON PURPOSE, and this is not an optimisation. A reliable message that
+            // cannot be delivered within MaxSendAttempts makes Riptide disconnect the connection
+            // that sent it -- see PendingMessage.TrySend. This one is sent while the downstream is
+            // saturated with the very save it is asking for, so its acks lag, it retries, and it
+            // hung the joining player up on themselves about two seconds into every join.
+            //
+            // It does not need the guarantee. It is a poll: a request that goes missing costs one
+            // window, because CheckForStall builds the next one from whatever is still outstanding
+            // and asks again. Reliability would only buy a duplicate of something already idempotent.
+            NetRegistry.Register<SaveResendRequestMessage>(NetMessageId.SaveResend, NetDelivery.Unreliable);
+            NetRegistry.OnServer<SaveResendRequestMessage>(NetMessageId.SaveResend,
+                (m, ctx) => SessionHandlers.ResendSaveChunks(ctx.SenderId, m.ChunkIds));
 
             NetRegistry.Seal();
 
@@ -628,6 +652,24 @@ namespace KaCMultiplayer.Net
                                 + "multiplayer (" + cause.GetType().Name + ": " + cause.Message
                                 + "); already in play mode: " + inPlayMode);
                 }
+
+                // Belt as well as braces. The prefix on World.PlaceAIs is what actually stops
+                // the AI kingdoms; this clears the config they would be built from, so nothing else
+                // that reads it later (a save pack, a DLC island takeover) can act on rival choices
+                // left over from someone's earlier single-player game.
+                //
+                // Emptied, never nulled: PlaceAIs dereferences aiStartInfo.startData without
+                // checking either, so a null here would turn a stale-config bug into a crash.
+                try
+                {
+                    if (AIBrainsContainer.inst != null)
+                    {
+                        AIBrainsContainer.PreStartAIConfig empty = new AIBrainsContainer.PreStartAIConfig();
+                        empty.startData = new AIBrainsContainer.PreStartAIConfig.AIStartData[0];
+                        AIBrainsContainer.inst.aiStartInfo = empty;
+                    }
+                }
+                catch (Exception ex) { NetLog.Error("clearing the rival-kingdom config", ex); }
 
                 if (!inPlayMode)
                     GameState.inst.SetNewMode(GameState.inst.playingMode);
@@ -1518,6 +1560,15 @@ namespace KaCMultiplayer.Net
         {
             try
             {
+                // A sync is the standing as it already is, sent to someone who was not here for
+                // it, so it is adopted rather than negotiated. Everything else is a request and
+                // goes through the rules below.
+                if (m.Sync)
+                {
+                    PlayerRelations.Set(m.TeamA, m.TeamB, (World.Relations)m.Relation);
+                    return;
+                }
+
                 // Every machine runs the SAME rule over the same message, so all of them reach
                 // the same answer without a second round trip: an alliance needs both sides to
                 // have asked, a war starts only after its notice period, and just the outcome of
@@ -1582,6 +1633,17 @@ namespace KaCMultiplayer.Net
 
         private static void ApplyDragonSpawn(DragonSpawnMessage m)
         {
+            // Our own announcement coming back. The machine that sent this already has the dragon,
+            // standing where it spawned it, wearing the id it minted; making a second one here
+            // would leave two dragons sharing a single name, and every report about either of them
+            // finding whichever came first.
+            //
+            // This was previously left out on purpose, because a client's own spawn was blocked
+            // locally and the echo was what created it. A client no longer announces spawns at all
+            // (see DragonSpawnPostfix), so the only echo anyone gets now is the host's, and the
+            // host is exactly the machine that must not act on it twice.
+            if (IsOwnEcho(m.Origin)) return;
+
             Vector3 at = new Vector3(m.X, m.Y, m.Z);
             NetLog.Info("dragon " + m.Kind + " at " + at);
 

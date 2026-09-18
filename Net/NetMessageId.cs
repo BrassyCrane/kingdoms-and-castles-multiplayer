@@ -26,6 +26,9 @@
         SaveTransfer = 1006,
         Notice = 1007,
 
+        /// <summary>A joiner naming the save chunks it still needs. See SaveTransfer.</summary>
+        SaveResend = 1008,
+
         // 1020-1039  lobby
         ChatSay = 1020,
         ChatNotice = 1021,
@@ -77,6 +80,9 @@
         MerchantTrade = 1112,
         ShipHealth = 1113,
 
+        /// <summary>What a kingdom charges for its exports. See Trade/ExportPrices.cs.</summary>
+        ExportPrices = 1114,
+
         // 1120-1129  dragons
         // One id for all three kinds, the kind travels in the payload, since the three spawns
         // differ only in which method the receiver calls.
@@ -87,6 +93,11 @@
         // 1130-1139  diplomacy
         PlayerRelation = 1130,
         DiplomacyDeal = 1131,
+
+        // 1132 was MenuPause, a shared gate that stopped the world while anyone had a menu open.
+        // Removed: it stopped and started the simulation on events that were not part of the game
+        // and desynced more than it saved. The number is left unused rather than reassigned, so a
+        // copy of the mod that predates this cannot be handed a different message under its id.
 
         // 1140-1149  siege catapults
         // Catapults are built from a barracks, and that barracks only ticks on its owner's

@@ -644,6 +644,11 @@ namespace KaCMultiplayer
         // and must not re-broadcast the second, that ping-pongs between the two machines.
         public static bool applyingRemoteSpeed = false;
 
+        /// <summary>
+        /// The game speed actually in effect, kept current by SpeedControlUISetSpeedHook.
+        /// </summary>
+        public static int CurrentSpeed = 1;
+
         // True while a speed change caused by the LOCAL player opening or closing a menu is being
         // applied. Such a change is real for this machine and must not leave it, see
         // PlayingModeMenuSpeedHook.
@@ -985,6 +990,10 @@ namespace KaCMultiplayer
             // on the wire is the same as it was on the fixed tick.
             SaveTransfer.PumpOutgoing();
 
+            // The other half of the same job, on the receiving side: notice when the world has
+            // stopped arriving and ask for what is missing. See SaveTransfer.CheckForStall.
+            SaveTransfer.CheckForStall();
+
             EnsureControlAITroopsOn();
 
             // Delivers any message raised while the dialog could not be seen, a mid-game
@@ -1058,6 +1067,19 @@ namespace KaCMultiplayer
                 KaCMultiplayer.Lobby.DiplomacyWindow.Toggle();
             }
 
+            // Ctrl+Shift+E sets what this kingdom charges for its exports. Next to the diplomacy
+            // key on purpose: the two windows are the same conversation, one about standing and one
+            // about terms.
+            if (NetClient.client.IsConnected
+                && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+                && (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+                && Input.GetKeyDown(KeyCode.E))
+            {
+                KaCMultiplayer.Trade.ExportPricesWindow.Toggle();
+            }
+
+            KaCMultiplayer.Trade.ExportPricesWindow.Tick();
+
             // In-game chat: opens on Return, sends on Return, cancels on Escape. Only active in a
             // started multiplayer session, so it never competes with the lobby's own chat box.
             InGameChat.Tick();
@@ -1069,6 +1091,9 @@ namespace KaCMultiplayer
             // Escape-to-close and the periodic refresh, so a relation someone else changed shows
             // without the player reopening the window.
             KaCMultiplayer.Lobby.DiplomacyWindow.Tick();
+            KaCMultiplayer.Lobby.AllianceRequestWindow.Tick();
+
+            KaCMultiplayer.Lobby.DealRequestWindow.Tick();
 
             // DEV ONLY, gated on FakePeer.Enabled, which follows Main.DevTestBuild and is false in
             // any build given to players, so this hotkey does nothing for them. Ctrl+Shift+F spawns
@@ -1653,6 +1678,26 @@ namespace KaCMultiplayer
                 Main.helper.Log("Wolf authority patch failed (wolf fights will resolve on every machine and diverge): " + e.Message);
             }
 
+            // Wolf BIRTHS, in a try of their own for the same reason as the deaths above: a miss
+            // here must cost only wolves, never the atomic PatchAll that carries the whole mod.
+            try
+            {
+                MethodInfo wolfSpawn = typeof(WolfDen).GetMethod(
+                    "AddWolf",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+                if (wolfSpawn != null)
+                    harmony.Patch(wolfSpawn,
+                        new HarmonyMethod(typeof(WolfSpawnAuthorityHook).GetMethod("Prefix", BindingFlags.Public | BindingFlags.Static)),
+                        null, null);
+
+                Main.helper.Log($"Wolf spawn authority patched ({wolfSpawn != null})");
+            }
+            catch (Exception e)
+            {
+                Main.helper.Log("Wolf spawn patch failed (wolf packs will grow independently on every machine): " + e.Message);
+            }
+
             PatchGhostKingdomFreeze(harmony);
         }
 
@@ -1864,10 +1909,57 @@ namespace KaCMultiplayer
                     catch { }
                 }
 
-                Main.helper.Log($"[BANNER] repainted {repainted} flag(s) across {kingdoms} kingdom(s), "
-                                + $"{failed} could not resolve an owner");
+
+                int hulls = RepaintShipHulls();
+
+                Main.helper.Log($"[BANNER] repainted {repainted} flag(s) across {kingdoms} kingdom(s) "
+                                + $"and {hulls} ship hull(s), {failed} could not resolve an owner");
             }
             catch (Exception e) { Main.helper.Log("[BANNER] repaint error: " + e.Message); }
+        }
+        /// <summary>
+        /// Repaints every ship's hull, and returns how many.
+        ///
+        /// A SHIP TAKES ITS COLOUR ONCE AND NOTHING EVER ASKS AGAIN. ShipBase.Init calls
+        /// UpdateMaterial, which is:
+        ///
+        ///     if (_teamID >= 0)
+        ///         foreach (mesh in meshes)
+        ///             mesh.material = World.GetLandmassOwnerByTeamId(_teamID).UniMaterialFogClip;
+        ///
+        /// UniMaterialFogClip is one of the things SetBannerIdx assigns, and a ship restored from a
+        /// save is rebuilt before its owner's banner has been read back. So it asks a kingdom whose
+        /// bannerIdx is still -1, is handed null, and Unity draws a null material in the magenta it
+        /// uses to mean "material missing". A hot pink merchant ship, on a kingdom that has
+        /// otherwise loaded perfectly.
+        ///
+        /// Ships do not subscribe to a banner the way flags do, so the sweep above never reached
+        /// them and nothing else ever will. Asking again is the whole fix: UpdateMaterial is
+        /// public, idempotent and cheap, and by the time this runs every kingdom has its livery.
+        /// Guarded per ship, because a ship whose team owns no land dereferences a null owner inside
+        /// the game's own method.
+        /// </summary>
+        private static int RepaintShipHulls()
+        {
+            int done = 0;
+
+            try
+            {
+                if (ShipSystem.inst == null || ShipSystem.inst.ships == null) return 0;
+
+                var ships = ShipSystem.inst.ships;
+                for (int i = 0; i < ships.Count; i++)   // .Count, never .data.Length
+                {
+                    ShipBase ship = ships.data[i];
+                    if (ship == null) continue;
+
+                    try { ship.UpdateMaterial(); done++; }
+                    catch { }   // one ship on unowned water must not cost the rest their colour
+                }
+            }
+            catch (Exception e) { Main.helper.Log("[BANNER] ship repaint error: " + e.Message); }
+
+            return done;
         }
 
         /// <summary>
@@ -2037,6 +2129,58 @@ namespace KaCMultiplayer
                 catch { return true; }   // never let a damage path throw; resolving is the safe default
 
                 __result = HitSfxResult.None;   // what vanilla returns; drives the hit effect only
+                return false;
+            }
+        }
+
+        // A wolf being BORN, which is the half of this that was never arbitrated.
+        //
+        // Damage had an arbiter and the pack's health was published, so the mod could say who
+        // decided a wolf died. Nothing said who decided one existed. WolfDen.Tick grows every den
+        // towards twelve wolves on a timer of its own:
+        //
+        //     if (WolfCount() < 12) { wolfSpawnTime += dt; if (wolfSpawnTime > 800) AddWolf(); }
+        //
+        // and that timer runs on every machine, off local simulated time, with its own SRand draws.
+        // Paused menus, different speeds and a guest who joined late all push it out of step, so the
+        // packs quietly grew apart from the first minutes of a session. EmptyCave.Update spawns
+        // wolves the same way.
+        //
+        // What that looked like: a den on neutral ground, which falls to the host to arbitrate. The
+        // host's den had grown a pack, the guest's had not, and the guest could do nothing about it,
+        // because damage away from the arbiter is suppressed. One player watched wolves wander an
+        // island the other saw empty, troops shot at nothing, and a reload put the wolves back on
+        // both machines, because the save was written by the machine that still had them.
+        //
+        // The published pack now decides size as well as health: a machine that is not the arbiter
+        // stops spawning and waits to be told, and ApplyWolfPackHealth tops it up to match. Both
+        // directions finally close, and nothing here changes single-player.
+        public class WolfSpawnAuthorityHook
+        {
+            /// <summary>Spawns this machine declined because the den is not ours to grow.</summary>
+            public static int Deferred;
+
+            public static bool Prefix(WolfDen __instance)
+            {
+                try
+                {
+                    if (__instance == null) return true;
+                    if (!NetClient.client.IsConnected) return true;   // single-player, vanilla behaviour
+
+                    // Dark unless combat authority is on, matching every other hook in this family.
+                    // With the feature off ResolvesHere answers true everywhere and this would do
+                    // nothing anyway; saying so outright keeps the switch meaningful.
+                    if (!Main.CombatAuthorityEnabled) return true;
+
+                    // The top-up in ApplyWolfPackHealth calls AddWolf deliberately, to match a pack
+                    // we have just been told about. That is the one spawn a non-arbiter must make.
+                    if (NetApply.InProgress) return true;
+
+                    if (KaCMultiplayer.Combat.CombatAuthority.ResolvesHere(__instance.GetPos())) return true;
+                }
+                catch { return true; }   // never let a simulation path throw; spawning is the safe default
+
+                Deferred++;
                 return false;
             }
         }
@@ -2374,10 +2518,131 @@ namespace KaCMultiplayer
         // `armies.data[j].teamId`, the army's own field, which this does not touch.
         public class UnitMaterialTeamHook
         {
-            public static void Prefix(ref int teamId)
+            // The two halves of the method's second loop, both private on their own classes.
+            private static MethodInfo unitUiUpdateMaterial;
+            private static MethodInfo generalUpdateMaterial;
+
+            private static bool reported;
+
+            /// <summary>
+            /// Replaces UnitSystem.UpdateMaterialFor with the same method, plus the null check it
+            /// is missing.
+            ///
+            /// WHAT VANILLA DOES:
+            ///
+            ///     foreach (cat in unitCategoriesGen)
+            ///         if (cat.teamId == teamId) { cat.mat = army; cat.unlitMat = unlit; }
+            ///
+            ///     foreach (army in armies) {
+            ///         General g = army.generalComponent;       // null while a save is loading
+            ///         g.unitUI.UpdateMaterial(army.teamId);    // NullReferenceException
+            ///         g.UpdateMaterial(army.teamId);
+            ///     }
+            ///
+            /// WHY THAT ONE MISSING CHECK COSTS SO MUCH. This is the last call in
+            /// LandmassOwner.SetBannerIdx, and there is real work after it: the loop that destroys
+            /// and rebuilds UniMaterialsCracked, the materials every building picks from in
+            /// UpdateMaterialSelection. The throw skips all of it. Then it keeps going -- out of
+            /// SetBannerIdx, out of Player.SetIndexedBanner, and out through
+            /// PlayerSaveData.Unpack, which abandons the rest of that kingdom's restore. One army
+            /// without a general is why a saved kingdom came back with no buildings, and why the
+            /// ones that did come back were drawn in the magenta Unity uses for a missing material.
+            ///
+            /// So it is fixed here, at the throw, and nowhere else. Earlier attempts suppressed
+            /// this method during loading, which broke every unit texture because the FIRST loop is
+            /// what fills UnitCategory.mat; then contained the throw at the caller, which left
+            /// UniMaterialsCracked unbuilt and turned the buildings magenta. Both were working
+            /// around a missing null check instead of adding one.
+            ///
+            /// Re-implemented rather than wrapped because Harmony 1.2 has no finalizer, so a prefix
+            /// cannot try/catch the original. The teamId rewrite that used to be this hook's whole
+            /// job is still here: multiplayer teams are 5 and up and match no unit category, so
+            /// they are mapped onto a vanilla one through the same helper the category lookup uses.
+            /// </summary>
+            public static bool Prefix(UnitSystem __instance, int teamId,
+                                      Material armyMaterial, Material unlitArmyMaterial)
             {
-                if (!NetClient.client.IsConnected) return;
-                teamId = UnitCategoryTeamFor(teamId);
+                try
+                {
+                    if (__instance == null) return true;
+
+                    int categoryTeam = NetClient.client.IsConnected ? UnitCategoryTeamFor(teamId) : teamId;
+
+                    // FIRST LOOP: the materials themselves. Everything visible depends on this and
+                    // nothing in it can throw.
+                    var categories = KaCMultiplayer.Net.PrivateField.Get<List<UnitSystem.UnitCategory>>(
+                        __instance, "unitCategoriesGen");
+
+                    if (categories != null)
+                    {
+                        for (int i = 0; i < categories.Count; i++)
+                        {
+                            UnitSystem.UnitCategory cat = categories[i];
+                            if (cat == null || cat.teamId != categoryTeam) continue;
+
+                            cat.mat = armyMaterial;
+                            cat.unlitMat = unlitArmyMaterial;
+                        }
+                    }
+
+                    // SECOND LOOP: refresh each army's general, skipping the ones that have not got
+                    // a general yet. That skip is the entire fix.
+                    var armies = __instance.armies;
+                    if (armies != null)
+                    {
+                        for (int j = 0; j < armies.Count; j++)   // .Count, never .data.Length
+                        {
+                            UnitSystem.Army army = armies.data[j];
+                            if (army == null) continue;
+
+                            General general = KaCMultiplayer.Net.PrivateField.Get<General>(army, "generalComponent");
+                            if (general == null)
+                            {
+                                if (!reported)
+                                {
+                                    reported = true;
+                                    Main.helper.Log("[BANNER] an army has no general component yet, so its model "
+                                        + "was left for the next refresh. Vanilla would have thrown here and "
+                                        + "taken the rest of the kingdom's restore with it. Logged once.");
+                                }
+                                continue;
+                            }
+
+                            if (general.unitUI != null)
+                            {
+                                if (unitUiUpdateMaterial == null)
+                                    unitUiUpdateMaterial = typeof(UnitIGUI).GetMethod("UpdateMaterial",
+                                        BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+                                if (unitUiUpdateMaterial != null)
+                                {
+                                    try { unitUiUpdateMaterial.Invoke(general.unitUI, new object[] { army.teamId }); }
+                                    catch { }   // one flag must not cost the rest their material
+                                }
+                            }
+
+                            if (generalUpdateMaterial == null)
+                                generalUpdateMaterial = typeof(General).GetMethod("UpdateMaterial",
+                                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+                            if (generalUpdateMaterial != null)
+                            {
+                                try { generalUpdateMaterial.Invoke(general, new object[] { army.teamId }); }
+                                catch { }
+                            }
+                        }
+                    }
+
+                    return false;   // done, and without the throw
+                }
+                catch (Exception e)
+                {
+                    // Must never be worse than vanilla. The materials above are assigned first, so
+                    // letting the original run now would only repeat work that has already
+                    // succeeded, and would reintroduce the throw this exists to remove.
+                    Main.helper.Log("[BANNER] unit material refresh guard failed: " + e.Message);
+                    return false;
+                }
             }
         }
 
@@ -2981,6 +3246,45 @@ namespace KaCMultiplayer
                 if (newState != MainMenuMode.State.Uninitialized)
                     Main.menuState = (MenuState)newState;
             }
+
+            /// <summary>
+            /// Tears the session down the moment vanilla's OWN menu flow lands on the top-level
+            /// main menu, not just when a Riptide disconnect event fires.
+            ///
+            /// EVERY EXISTING TEARDOWN IS EVENT-DRIVEN: NetClient.Client_Disconnected fires for a
+            /// drop, a kick, or the host closing; BrowserScreen's Back button and ServerRow's Join
+            /// both call ResetNetworkState before their own action. None of them fire for a player
+            /// who presses Escape mid-game and clicks through Quit -> Confirm. That path is pure
+            /// vanilla: MainMenuMode.OnClickedReturnToMainMenu asks for QuitConfirm, confirming it
+            /// calls TransitionTo(State.Menu), and nothing else happens. Riptide is never told to
+            /// disconnect, so the server (if we are hosting) or the connection (if we are a guest)
+            /// is still fully live the moment the main menu appears.
+            ///
+            /// What that leaves behind: the OTHER player's game keeps running and keeps sending
+            /// build and wreck messages, which keep arriving here and get applied to a World that
+            /// vanilla is midway through tearing down for its own reasons, throwing
+            /// NullReferenceException in World.GetUniMaterialFor and World.DemolishBuilding (both
+            /// seen live). The scene itself is never unloaded, so what the player sees is the real,
+            /// half-broken game world rendering behind the main-menu overlay, with damaged icons and
+            /// materials from the exceptions above, until they quit the whole application.
+            ///
+            /// A Postfix, so vanilla's own State.Menu handling runs first and this cannot interfere
+            /// with it. Guarded on InMultiplayer so an ordinary single-player "back to menu" is
+            /// untouched, and ResetNetworkState is the same idempotent teardown every other exit
+            /// path already uses, so calling it a second time from a disconnect that follows costs
+            /// nothing.
+            /// </summary>
+            private static void Postfix(MainMenuMode.State newState)
+            {
+                if (newState != MainMenuMode.State.Menu) return;
+                if (!Main.InMultiplayer) return;
+
+                Main.helper.Log("[net] returned to the main menu mid-session; tearing the network "
+                                + "down rather than leaving it running behind the menu");
+
+                try { KaCMultiplayer.Net.SteamLobby.ResetNetworkState(); }
+                catch (Exception e) { Main.helper.Log("[net] reset on return-to-menu failed: " + e.Message); }
+            }
         }
 
         /// <summary>
@@ -3151,6 +3455,42 @@ namespace KaCMultiplayer
                                     + " season event that farms harvest on)");
                 }
                 catch (Exception e) { Main.LogEx("cave container save guard", e); }
+            }
+        }
+
+        /// <summary>
+        /// NO COMPUTER KINGDOMS IN A MULTIPLAYER GAME. Every island belongs to a person.
+        ///
+        /// This used to be true by accident. MainMenuMode.StartGame ends by reading
+        /// RivalKingdomSettingsUI.inst.rivalItems, that screen is never shown in multiplayer, so
+        /// the field was null, StartGame threw, and the AI config it would have written was never
+        /// built. ApplySessionStart even logs the throw as the expected path.
+        ///
+        /// It is only null on a machine that has not opened the screen SINCE IT LAUNCHED. Play one
+        /// single-player game first and RivalKingdomSettingsUI.inst is alive for the rest of the
+        /// process, holding whatever rivals that player picked. StartGame then finishes, fills in
+        /// AIBrainsContainer.aiStartInfo, and Keep.OnPlayerPlacement calls PlaceAIs the moment that
+        /// player puts down their starting keep.
+        ///
+        /// What that looked like: one player had played solo before joining, so when she placed her
+        /// keep her game quietly founded three AI kingdoms, one per spare island. Each planted a
+        /// keep and five villagers, BuildingWatcher saw buildings appear on her machine and sent
+        /// them out as hers, and every player watched three castles they had not built rise on
+        /// islands nobody owned, with twenty villagers credited to her.
+        ///
+        /// So the rule is stated rather than hoped for. Single-player is untouched: this only
+        /// refuses while a session is live.
+        /// </summary>
+        [HarmonyPatch(typeof(World), "PlaceAIs")]
+        public class NoAIKingdomsInMultiplayerHook
+        {
+            public static bool Prefix()
+            {
+                if (!Main.InMultiplayer) return true;
+
+                Main.helper.Log("[AI] skipped the AI-kingdom placement; every island in a "
+                                + "multiplayer game belongs to a player");
+                return false;
             }
         }
 
@@ -5342,6 +5682,76 @@ namespace KaCMultiplayer
             }
         }
 
+        /// <summary>
+        /// Prices a visiting hold at what its OWNER asks, not at what the buyer's own kingdom
+        /// happens to charge.
+        ///
+        /// RefreshBuyWindow builds the list from Player.inst.defaultPayCost, which is the LOCAL
+        /// player's table, so every cross-player trade settled at the buyer's own prices and a
+        /// seller had no way to say what their goods were worth. Vanilla looks like it meant
+        /// otherwise: it reaches for the seller's costs with LandmassOwner.GetPayCosts, then guards
+        /// that branch with owner.teamId != ship.TeamID() after fetching the owner BY ship.TeamID().
+        /// The condition cannot be true, so the branch is dead and the default always wins.
+        ///
+        /// A Postfix rather than a transpiler because the line items carry the price themselves:
+        /// re-Set each one and both the displayed unit price and GetCost() follow, which means the
+        /// transaction and the gold that crosses the wire follow too, since PrepPlayerMerchantTrade
+        /// sums those same GetCost() values. One hook, and the number shown is the number paid.
+        ///
+        /// Silent for anything unpriced. A kingdom that has never opened the price window has no
+        /// list, this returns immediately, and the trade is exactly what it was before.
+        /// </summary>
+        [HarmonyPatch(typeof(MerchantUI), "RefreshBuyWindow")]
+        public class MerchantUIExportPriceHook
+        {
+            public static void Postfix(MerchantUI __instance)
+            {
+                try
+                {
+                    if (!NetClient.client.IsConnected || __instance == null) return;
+
+                    Ship merchant = __instance.ship as Ship;
+                    if (merchant == null || merchant.type != ShipBase.ShipType.PlayerMerchant) return;
+
+                    int seller = merchant.TeamID();
+                    int localTeam = (Player.inst != null && Player.inst.PlayerLandmassOwner != null)
+                        ? Player.inst.PlayerLandmassOwner.teamId : int.MinValue;
+
+                    // Our own ship. Vanilla pays us from ourselves and nothing is synced, so there
+                    // is no second party whose prices could apply.
+                    if (seller == localTeam) return;
+
+                    if (!KaCMultiplayer.Trade.ExportPrices.HasList(seller)) return;
+
+                    Transform content = __instance.buyContent;
+                    if (content == null) return;
+
+                    Assets.Code.ResourceAmount hold = merchant.GetHold();
+
+                    for (int i = 0; i < content.childCount; i++)
+                    {
+                        ResourceLineItemUI line = content.GetChild(i).GetComponent<ResourceLineItemUI>();
+                        if (line == null) continue;
+
+                        int price = KaCMultiplayer.Trade.ExportPrices.PriceFor(seller, line.rtype);
+
+                        // Withheld goods. Hidden rather than priced impossibly high, because a
+                        // seller carrying iron they need for themselves should be able to say no
+                        // outright. An inactive row cannot be ordered from and contributes a zero
+                        // line to the transaction, so it cannot be bought by any route.
+                        if (price <= KaCMultiplayer.Trade.ExportPrices.NotForSale)
+                        {
+                            line.gameObject.SetActive(false);
+                            continue;
+                        }
+
+                        line.Set(line.rtype, price, hold.Get(line.rtype));
+                    }
+                }
+                catch (Exception e) { Main.helper.Log("[MERCHANT] export pricing error: " + e.Message); }
+            }
+        }
+
         public class MerchantUIBuyHook
         {
             public static void Prefix(MerchantUI __instance) { Main.PrepPlayerMerchantTrade(__instance, true); }
@@ -5509,6 +5919,79 @@ namespace KaCMultiplayer
             return "Team " + teamId;
         }
 
+        /// <summary>
+        /// Raises or lowers the game's own merchant banner, the one that slides in at the edge of
+        /// the screen when a trader puts in at your port.
+        ///
+        /// Wrapped because every reference on the way to it can be missing: the banner lives on
+        /// GameUI, which does not exist in the menus, and a notification that fails to appear must
+        /// never take a Ship.Tick postfix down with it.
+        /// </summary>
+        public static void ShowMerchantNotification(bool arriving)
+        {
+            try
+            {
+                if (GameUI.inst == null || GameUI.inst.merchantNotification == null) return;
+
+                if (arriving) GameUI.inst.merchantNotification.OnShipArrival();
+                else GameUI.inst.merchantNotification.OnShipDeparture();
+            }
+            catch (Exception e) { Main.helper.Log("[MERCHANT] notification error: " + e.Message); }
+        }
+
+        /// <summary>
+        /// Points the merchant banner's view button at a visiting PLAYER's merchant.
+        ///
+        /// The vanilla walk looks for ships of type Merchant carrying a MerchantShip component and
+        /// heading for a player dock. Another player's merchant is type PlayerMerchant with no such
+        /// component, so the walk found nothing, fell through to its last line, and returned the
+        /// position of your own keep. The button worked; it just took you to the wrong place, which
+        /// is why the banner was not raised for these ships at all.
+        ///
+        /// Answered here instead when a foreign player merchant is tied up at one of our docks, and
+        /// deferred to vanilla in every other case, so an ordinary merchant still tracks exactly as
+        /// it did. With both kinds in port the visitor wins, because it is the one the vanilla walk
+        /// cannot see and therefore the only one that would otherwise be unreachable.
+        /// </summary>
+        [HarmonyPatch(typeof(MerchantNotification), "GetDesiredTrackingPos")]
+        public class MerchantNotificationTrackPlayerMerchantHook
+        {
+            public static bool Prefix(ref Vector3 __result)
+            {
+                try
+                {
+                    if (!NetClient.client.IsConnected) return true;
+                    if (ShipSystem.inst == null || ShipSystem.inst.ships == null) return true;
+
+                    int localTeam = (Player.inst != null && Player.inst.PlayerLandmassOwner != null)
+                        ? Player.inst.PlayerLandmassOwner.teamId : int.MinValue;
+                    if (localTeam == int.MinValue) return true;
+
+                    var ships = ShipSystem.inst.ships;
+                    for (int i = 0; i < ships.Count; i++)   // .Count, never .data.Length
+                    {
+                        Ship s = ships.data[i] as Ship;
+                        if (s == null || s.type != ShipBase.ShipType.PlayerMerchant) continue;
+                        if (s.teamID == localTeam) continue;   // ours; the banner is for visitors
+                        if (!s.arrived) continue;
+
+                        Dock dock = s.GetCurrentDock();
+                        Building dockB = dock == null ? null : dock.GetComponent<Building>();
+                        if (dockB == null || dockB.TeamID() != localTeam) continue;
+
+                        __result = s.GetPos();
+                        return false;
+                    }
+                }
+                catch (Exception e)
+                {
+                    Main.helper.Log("[MERCHANT] tracking pos error: " + e.Message);
+                }
+
+                return true;   // no visitor in port, let vanilla answer
+            }
+        }
+
         [HarmonyPatch(typeof(Ship), "Tick")]
         public class ShipTickArrivalLogHook
         {
@@ -5538,7 +6021,10 @@ namespace KaCMultiplayer
                         // Gone, or moved on to somebody else's port. Take the marker down so a stale
                         // exclamation does not hang over a ship that has nothing to offer.
                         if (Main._loggedMerchantArrivals.Remove(__instance.guid))
+                        {
                             Main.SetMerchantIssueButton(__instance, false);
+                            Main.ShowMerchantNotification(false);
+                        }
                         return;
                     }
 
@@ -5550,12 +6036,20 @@ namespace KaCMultiplayer
                     // PlayerMerchant, so switching it on is the whole trade prompt: the exclamation
                     // appears over the visiting ship and clicking it opens the trade window.
                     //
-                    // GameUI.merchantNotification is deliberately NOT used, even though vanilla pairs
-                    // it with this for foreign merchants. Its view button walks
-                    // GetDesiredTrackingPos, which only counts ships of type Merchant, so a player
-                    // merchant is invisible to it and clicking through would centre the camera on
-                    // your own keep instead of on the visitor.
                     Main.SetMerchantIssueButton(__instance, true);
+
+                    // AND THE REAL NOTIFICATION, the one a normal merchant raises.
+                    //
+                    // This was left out before for a good reason: the banner's view button walks
+                    // MerchantNotification.GetDesiredTrackingPos, which counts only ships of type
+                    // Merchant that carry a MerchantShip component. A player merchant is type
+                    // PlayerMerchant and has no such component, so it was invisible to that walk
+                    // and clicking through would have centred the camera on your own keep.
+                    //
+                    // That walk is now covered (see MerchantNotificationTrackPlayerMerchantHook), so
+                    // the banner can be raised honestly: a visiting player's merchant announces
+                    // itself exactly as an ordinary one does, and the view button goes to the ship.
+                    Main.ShowMerchantNotification(true);
 
                     string trader = Main.KingdomNameForTeam(__instance.teamID);
                     KingdomLog.TryLog("mpMerchant" + __instance.guid,
@@ -6125,6 +6619,7 @@ namespace KaCMultiplayer
 
                 bool changed = idx != knownSpeed;
                 knownSpeed = idx; // always reflect the speed that was just applied
+                Main.CurrentSpeed = idx;
 
                 // Two flags, because a speed change can arrive by either route. Missing one
                 // means the change is echoed straight back to the sender, which then applies it
@@ -6167,9 +6662,20 @@ namespace KaCMultiplayer
         // the exit is scoped to the two states the game itself restores speed for, so starting a game
         // from the main menu is untouched.
         //
-        // NOTE: this fixes the broadcast, not the arbitration. A player sitting in a menu still has
-        // their local pause overwritten if someone else changes speed meanwhile, because speed is
-        // last-write-wins across the session. That is the larger design question, see Q6.
+        // A MENU IS NOT A PAUSE, AND THE WORLD ONLY STOPS WHEN SOMEBODY STOPS IT.
+        //
+        // There was a shared gate here for a while: opening a menu told the other players, and the
+        // world stayed at speed zero until the last menu closed. It was meant to stop the two sides
+        // drifting apart while one of them read something. In practice it caused more desync than it
+        // prevented, because it made the simulation start and stop on events that were never part of
+        // anyone's game: a player alt-tabbing, glancing at the share screen, or changing a banner
+        // would halt everyone, and every one of those stops and starts was another chance for the
+        // two worlds to disagree about what had happened and when.
+        //
+        // So it is gone, and the rule is the simple one: time stops when a player sets the speed to
+        // pause, and at no other moment. Only the suppression below remains, which is the original
+        // fix and a smaller claim, that YOUR menu pauses YOUR game and says nothing to anybody
+        // else.
         [HarmonyPatch(typeof(PlayingMode), "OnClickedMenu")]
         public class PlayingModeOnClickedMenuHook
         {
@@ -6205,7 +6711,12 @@ namespace KaCMultiplayer
                 Main.localMenuSpeedChange = (s == MainMenuMode.State.PauseMenu || s == MainMenuMode.State.BannerSelect);
             }
 
-            public static void Postfix() { Main.localMenuSpeedChange = false; }
+            /// <summary>Cleared unconditionally, so the flag cannot survive a Shutdown that took the
+            /// early exit above and leak into the next speed change the player makes.</summary>
+            public static void Postfix()
+            {
+                Main.localMenuSpeedChange = false;
+            }
         }
 
         /// <summary>
@@ -6434,18 +6945,51 @@ namespace KaCMultiplayer
             return !(NetClient.client.IsConnected && !NetHost.IsRunning && !NetApply.InProgress);
         }
 
-        private static void DragonSpawnPostfix(KaCMultiplayer.Net.Messages.DragonKind kind, Vector3 start)
+        /// <summary>
+        /// Announces a dragon THIS MACHINE ACTUALLY CREATED.
+        ///
+        /// <paramref name="spawned"/> is what the Prefix returned, and everything here depends on
+        /// it, because a Harmony Postfix runs even when its Prefix returned false. The Prefix skips
+        /// the original method; it does not skip the rest of the patch. So on a client, where the
+        /// Prefix deliberately blocks the local spawn, this used to run anyway and announce a
+        /// dragon that had never been born.
+        ///
+        /// The id is what made that harmful rather than merely odd. NewestDragonId() reads the
+        /// newest entry in currentDragons, and after a blocked spawn that is some OTHER dragon, or
+        /// Guid.Empty when there are none. So the message said "a dragon spawned here, and its name
+        /// is one you are already using". The host duly created one and stamped it with that name,
+        /// and ended up with two dragons answering to a single id, or with an unnamed one that no
+        /// health report, death or flight update could ever refer to again.
+        ///
+        /// That dragon is invisible to the machine that supposedly spawned it, cannot be killed
+        /// through the sync, and goes on burning villages by itself: a dragon that stays for a year
+        /// and kills citizens nobody can account for.
+        ///
+        /// Dragons are host-authoritative at spawn, which the flight sync already assumes from end
+        /// to end (see Combat/DragonFlightSync.cs). This makes the spawn path say the same thing.
+        /// </summary>
+        private static void DragonSpawnPostfix(KaCMultiplayer.Net.Messages.DragonKind kind, Vector3 start, bool spawned)
         {
+            if (!spawned) return;   // the Prefix blocked it; there is no dragon here to announce
             if (!NetClient.client.IsConnected || NetApply.InProgress)
                 return;
 
             // The dragon that was just created is the newest one in the list. Its id goes out with
             // the spawn so every machine's copy answers to the same name, which is what makes it
             // possible to report anything about it later.
+            Guid id = NewestDragonId();
+            if (id == Guid.Empty)
+            {
+                // Nothing to name it by, so nothing useful to say. A spawn message with no id makes
+                // a dragon on every other machine that none of them can ever talk about again.
+                Main.helper.Log("[DRAGON] spawn not announced: no id to give it");
+                return;
+            }
+
             NetRouter.Send(new KaCMultiplayer.Net.Messages.DragonSpawnMessage
             {
                 Kind = kind,
-                Dragon = NewestDragonId(),
+                Dragon = id,
                 X = start.x, Y = start.y, Z = start.z
             });
         }
@@ -6453,30 +6997,45 @@ namespace KaCMultiplayer
         [HarmonyPatch(typeof(DragonSpawn), "SpawnSiegeDragon")]
         public class DragonSpawnSpawnSiegeDragonHook
         {
-            public static bool Prefix() { return DragonSpawnPrefix(); }
-            public static void Postfix(Vector3 start)
+            public static bool Prefix(out bool __state)
             {
-                DragonSpawnPostfix(KaCMultiplayer.Net.Messages.DragonKind.Siege, start);
+                __state = DragonSpawnPrefix();
+                return __state;
+            }
+
+            public static void Postfix(Vector3 start, bool __state)
+            {
+                DragonSpawnPostfix(KaCMultiplayer.Net.Messages.DragonKind.Siege, start, __state);
             }
         }
 
         [HarmonyPatch(typeof(DragonSpawn), "SpawnMamaDragon", new Type[] { typeof(Vector3) })]
         public class DragonSpawnSpawnMamaDragonHook
         {
-            public static bool Prefix() { return DragonSpawnPrefix(); }
-            public static void Postfix(Vector3 start)
+            public static bool Prefix(out bool __state)
             {
-                DragonSpawnPostfix(KaCMultiplayer.Net.Messages.DragonKind.Mama, start);
+                __state = DragonSpawnPrefix();
+                return __state;
+            }
+
+            public static void Postfix(Vector3 start, bool __state)
+            {
+                DragonSpawnPostfix(KaCMultiplayer.Net.Messages.DragonKind.Mama, start, __state);
             }
         }
 
         [HarmonyPatch(typeof(DragonSpawn), "SpawnBabyDragon", new Type[] { typeof(Vector3) })]
         public class DragonSpawnSpawnBabyDragonHook
         {
-            public static bool Prefix() { return DragonSpawnPrefix(); }
-            public static void Postfix(Vector3 start)
+            public static bool Prefix(out bool __state)
             {
-                DragonSpawnPostfix(KaCMultiplayer.Net.Messages.DragonKind.Baby, start);
+                __state = DragonSpawnPrefix();
+                return __state;
+            }
+
+            public static void Postfix(Vector3 start, bool __state)
+            {
+                DragonSpawnPostfix(KaCMultiplayer.Net.Messages.DragonKind.Baby, start, __state);
             }
         }
 
@@ -6498,10 +7057,15 @@ namespace KaCMultiplayer
         [HarmonyPatch(typeof(DragonSpawn), "SpawnBabyDragonToVisit", new Type[] { typeof(Vector3) })]
         public class DragonSpawnSpawnBabyDragonToVisitHook
         {
-            public static bool Prefix() { return DragonSpawnPrefix(); }
-            public static void Postfix(Vector3 start)
+            public static bool Prefix(out bool __state)
             {
-                DragonSpawnPostfix(KaCMultiplayer.Net.Messages.DragonKind.Visiting, start);
+                __state = DragonSpawnPrefix();
+                return __state;
+            }
+
+            public static void Postfix(Vector3 start, bool __state)
+            {
+                DragonSpawnPostfix(KaCMultiplayer.Net.Messages.DragonKind.Visiting, start, __state);
             }
         }
 
@@ -6912,6 +7476,11 @@ namespace KaCMultiplayer
                 data.relations = KaCMultiplayer.Net.PlayerRelations.Snapshot();
                 data.pendingWars = KaCMultiplayer.Net.PlayerRelations.SnapshotPendingWars();
 
+                // Export prices are session state too: they belong to kingdoms rather than to any
+                // one player's entry, and a kingdom whose owner has not reconnected still has them.
+                KaCMultiplayer.Trade.ExportPrices.Pack(
+                    data.exportPriceTeams, data.exportPriceTypes, data.exportPriceValues);
+
                 LoadSaveOverrides.ModSaveData.WriteSession(data);
                 Main.helper.Log($"[SAVE] wrote mod session block for {data.players.Count} kingdom(s) " +
                                 $"and {data.relations.Count} relation pair(s) into the save dictionary");
@@ -7094,6 +7663,89 @@ namespace KaCMultiplayer
                 if (LoadSaveOverrides.SessionSave.Unpacking)
                     return false; // skip original
                 return true;
+            }
+        }
+
+        /// <summary>
+        /// Stops a fishing hut counting its dock positions before the nav grid exists.
+        ///
+        /// THE SAME CRASH AS THE SHIP ONE ABOVE, from the other direction. Restoring a fishing hut
+        /// runs OnBuildingPlacement, which calls ValidateDockPositions, which asks each dock cell
+        /// PathCell.GetBlocksWaterPath(cell, owner.teamId). That reads waterPathBlocked[teamId] --
+        /// a bool array sized for vanilla's five teams -- and our team ids start at 5. So a hut
+        /// belonging to a multiplayer kingdom indexes past the end of the array and takes the whole
+        /// load down with it: "There was a problem loading this save file."
+        ///
+        /// PathCellBakeTeamSlotsHook below already grows those arrays to 32 slots, which is the real
+        /// fix and works everywhere the bake has run. It has NOT run here. The water nav grid is
+        /// rebuilt after the unpack finishes, so during the unpack these cells still carry the
+        /// native size-5 arrays and there is nothing to read.
+        ///
+        /// Skipped rather than made safe, because FishingHut.Tick calls this too: the count is
+        /// recomputed on the hut's first tick once the world is actually running, from a grid that
+        /// exists, with arrays that have been widened. Nothing is lost but a number that was about
+        /// to be wrong anyway.
+        ///
+        /// GetBlocksWaterPath cannot be patched instead. It is nine bytes of IL, which is inside
+        /// Mono's inlining threshold, so a prefix on it would be dead code -- the same trap that
+        /// IsCreativeModeOptionOn and GetJobEnabledFlags set for this project already.
+        /// </summary>
+        [HarmonyPatch(typeof(FishingHut), "ValidateDockPositions")]
+        public class FishingHutValidateDockPositionsHook
+        {
+            public static bool Prefix()
+            {
+                return !LoadSaveOverrides.SessionSave.Unpacking;
+            }
+        }
+
+        /// <summary>
+        /// Stops one unit's flag colour aborting a load.
+        ///
+        /// UnitIGUI.UpdateMaterial paints a unit's flag with
+        /// <c>World.inst.liverySets[owner.bannerIdx].armyMaterialUnlit</c>, and checks the owner for
+        /// null but never the index. A troop transport restored from a save calls it through
+        /// TroopTransportShip.Init while ShipSystemSaveData is still unpacking, at a point where a
+        /// kingdom rebuilt by this mod may not have been given its banner yet. The list lookup
+        /// throws, the exception leaves LoadSave.Load, and the player is told the save is broken.
+        ///
+        /// It is not broken. The only thing that cannot be answered yet is what colour one flag
+        /// should be, and that is repainted anyway: every banner change calls MarkBannersDirty and
+        /// the sweep repaints every flag in the world.
+        ///
+        /// Logged with the actual index, once, because "bannerIdx was out of range" is a fact worth
+        /// having if this ever turns out to mean something worse than "too early".
+        /// </summary>
+        [HarmonyPatch(typeof(UnitIGUI), "UpdateMaterial")]
+        public class UnitIGUIUpdateMaterialHook
+        {
+            private static bool reported;
+
+            public static bool Prefix(int teamId)
+            {
+                try
+                {
+                    LandmassOwner owner = World.GetLandmassOwnerByTeamId(teamId);
+                    if (owner == null) return false;   // vanilla does nothing here either
+
+                    var liveries = World.inst != null ? World.inst.liverySets : null;
+                    if (liveries != null && owner.bannerIdx >= 0 && owner.bannerIdx < liveries.Count)
+                        return true;   // in range, let vanilla paint it
+
+                    if (!reported)
+                    {
+                        reported = true;
+                        Main.helper.Log($"[BANNER] team {teamId} asked for livery {owner.bannerIdx} of "
+                            + $"{(liveries == null ? -1 : liveries.Count)}; flag left unpainted rather "
+                            + "than throwing. Repainted by the next banner sweep. Logged once.");
+                    }
+                }
+                catch (Exception e)
+                {
+                    Main.helper.Log("[BANNER] unit material guard error: " + e.Message);
+                }
+
+                return false;
             }
         }
 

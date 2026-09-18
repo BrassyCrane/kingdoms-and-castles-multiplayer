@@ -318,7 +318,12 @@ namespace KaCMultiplayer.Net
                     {
                         TeamA = TeamPair.Low(entry.Key),
                         TeamB = TeamPair.High(entry.Key),
-                        Relation = (int)entry.Value
+                        Relation = (int)entry.Value,
+
+                        // These already happened. Consent was given when they were agreed, and
+                        // asking for it again on arrival is what turned a joiner's existing
+                        // alliance into an unanswered proposal.
+                        Sync = true
                     }, clientId);
                 }
 
@@ -366,16 +371,94 @@ namespace KaCMultiplayer.Net
             SendSaveBytes(clientId, save, resume: false);
         }
 
+        /// <summary>
+        /// Sends one client the chunks it says it never got.
+        ///
+        /// Cut fresh from the same bytes with the same arithmetic as the first pass, so a repaired
+        /// chunk is byte-for-byte the one that went missing. Nothing is remembered between passes.
+        /// </summary>
+        public static void ResendSaveChunks(ushort clientId, List<int> chunkIds)
+        {
+            try
+            {
+                if (chunkIds == null || chunkIds.Count == 0) return;
+
+                // The bytes THIS client is being sent. A mid-game joiner is receiving a packed
+                // snapshot rather than the file on disk, so reading the disk copy here would answer
+                // a request for chunk 900 with a different world's chunk 900.
+                byte[] save = SaveTransfer.Remembered(clientId);
+                if (save == null || save.Length == 0)
+                {
+                    NetLog.Warn("save resend: client " + clientId + " asked for "
+                                + chunkIds.Count + " chunk(s) but there is no save to cut");
+                    return;
+                }
+
+                int total = (save.Length + SaveChunkBytes - 1) / SaveChunkBytes;
+                int sent = 0;
+
+                for (int i = 0; i < chunkIds.Count; i++)
+                {
+                    int id = chunkIds[i];
+                    if (id < 0 || id >= total) continue;   // not a chunk of this save
+
+                    int offset = id * SaveChunkBytes;
+                    int size = Math.Min(SaveChunkBytes, save.Length - offset);
+                    if (size <= 0) continue;
+
+                    byte[] chunk = new byte[size];
+                    Buffer.BlockCopy(save, offset, chunk, 0, size);
+
+                    SaveTransfer.Outgoing.Enqueue(new SaveTransfer.OutgoingChunk
+                    {
+                        ClientId = clientId,
+                        Message = new SaveTransferMessage
+                        {
+                            ChunkId = id,
+                            TotalChunks = total,
+                            SaveSize = save.Length,
+                            Offset = offset,
+                            Resume = false,
+                            Data = chunk
+                        }
+                    });
+                    sent++;
+                }
+
+                // Worth a line every time. If these rounds keep coming, and keep being large, the
+                // send rate is losing more than the repair can recover and the rate is the thing to
+                // change. That is a judgement this log makes possible and guesswork otherwise.
+                NetLog.Info("save resend: client " + clientId + " asked for " + chunkIds.Count
+                            + " chunk(s), re-queued " + sent);
+            }
+            catch (Exception e) { NetLog.Error("resending save chunks", e); }
+        }
+
         /// <summary>Cuts a save into chunks and queues them for one client.</summary>
         private static void SendSaveBytes(ushort clientId, byte[] save, bool resume)
         {
             try
             {
+                // Anything still queued for this client is from an attempt they have abandoned.
+                // They are starting again from chunk zero, so the remains only take up room in a
+                // queue everybody shares.
+                SaveTransfer.BeginSendingTo(clientId);
 
                 int offset = 0;
                 int total = (save.Length + SaveChunkBytes - 1) / SaveChunkBytes;
 
-                for (int i = 0; i < total; i++)
+                // Kept so the repair path can re-cut any chunk later. Both send paths use it: a
+                // fresh load reads the save from disk, a mid-game join packs a snapshot, and after
+                // this point neither is reachable any other way.
+                SaveTransfer.Remember(clientId, save);
+
+                // ONLY THE FIRST WINDOW GOES OUT UNPROMPTED. The client asks for the rest as it
+                // takes delivery, which is what keeps the number of unacknowledged messages on the
+                // wire bounded. See SaveTransfer.WindowChunks for why that bound is the whole
+                // point.
+                int firstWindow = Math.Min(total, SaveTransfer.WindowChunks);
+
+                for (int i = 0; i < firstWindow; i++)
                 {
                     int size = Math.Min(SaveChunkBytes, save.Length - offset);
                     byte[] chunk = new byte[size];
@@ -398,8 +481,9 @@ namespace KaCMultiplayer.Net
                     offset += size;
                 }
 
-                NetLog.Info((resume ? "resume" : "save") + " transfer: queued " + total +
-                            " chunks (" + save.Length + " bytes) for client " + clientId);
+                NetLog.Info((resume ? "resume" : "save") + " transfer: " + total + " chunks ("
+                            + save.Length + " bytes) for client " + clientId + "; sent the first "
+                            + firstWindow + ", they will ask for the rest");
             }
             catch (Exception ex) { NetLog.Error("save transfer queue", ex); }
         }
@@ -422,6 +506,18 @@ namespace KaCMultiplayer.Net
                 int dens = SendHazards<WolfDen>(clientId, 0);
                 int huts = SendHazards<WitchHut>(clientId, 1);
                 NetLog.Info("hazard catch-up for client " + clientId + ": " + dens + " dens, " + huts + " huts");
+
+                // The messages above say a den EXISTS. They say nothing about what is living in it,
+                // and a joiner starts with every pack empty, because a machine that does not
+                // arbitrate a den no longer spawns into it. Left alone, the sweep would stay silent
+                // about any den that happened to be quiet, and those packs would still be empty an
+                // hour later. Asking it to report everything once puts the newcomer straight.
+                KaCMultiplayer.Combat.CombatSync.RepublishWolves();
+
+                // Prices too. A joiner who does not have them would open a visiting hold and be
+                // quoted the game's default for goods the seller has priced differently, then be
+                // charged the seller's real price when the transaction settled.
+                KaCMultiplayer.Trade.ExportPrices.SendAllTo(clientId);
             }
             catch (Exception ex) { NetLog.Error("hazard catch-up", ex); }
         }
