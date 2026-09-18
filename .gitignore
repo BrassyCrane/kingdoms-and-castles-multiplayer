@@ -1,0 +1,4 @@
+# Local tooling and runtime output, never part of the mod
+.claude/
+output.txt
+__pycache__/
