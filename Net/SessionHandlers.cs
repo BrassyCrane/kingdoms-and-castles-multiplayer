@@ -494,7 +494,7 @@ namespace KaCMultiplayer.Net
         /// </summary>
         private static void SyncFreshWorld(ushort clientId)
         {
-            NetRouter.Broadcast(new WorldSeedMessage { Seed = World.inst.seed }, NetClient.client.Id);
+            NetRouter.Broadcast(WorldSeedMessage.ForCurrentWorld(), NetClient.client.Id);
 
             // Only to the joiner: players already in the session have these, and a second
             // copy would duplicate them. The seed above is sent first, so the client
