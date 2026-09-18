@@ -9,6 +9,11 @@ troops, trade, diplomacy and saved sessions.
 
 This repository is the source of that Workshop item. It is still in beta.
 
+## Known issues
+
+The current list of known problems, with workarounds where there is one, is in
+[KNOWN_ISSUES.md](KNOWN_ISSUES.md). Please check it before reporting.
+
 ## Reporting a bug
 
 A report with logs gets fixed. A report without them usually cannot be. Please attach **both**:
