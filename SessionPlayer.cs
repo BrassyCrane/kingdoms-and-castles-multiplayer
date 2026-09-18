@@ -39,6 +39,33 @@ namespace KaCMultiplayer
         // they must not block the lobby's ready/Start gating. Cleared if the real player reconnects.
         public bool isGhost = false;
 
+        /// <summary>
+        /// This player's Steam name, or their session name when Steam cannot tell us.
+        ///
+        /// Asked of Steam rather than trusted from the session, because the name that travelled in
+        /// the handshake is whatever the sender happened to be called at the time, and it is blank
+        /// for a kingdom restored from a save whose owner has not reconnected yet.
+        ///
+        /// Lives here rather than in whichever window needed it first, because three of them do now
+        /// and a name that differs between the diplomacy list and the popup asking about the same
+        /// player reads as two different people.
+        /// </summary>
+        public string SteamPersona()
+        {
+            try
+            {
+                ulong id;
+                if (ulong.TryParse(steamId, out id))
+                {
+                    string persona = Steamworks.SteamFriends.GetFriendPersonaName(new Steamworks.CSteamID(id));
+                    if (!string.IsNullOrWhiteSpace(persona) && persona != "[unknown]") return persona;
+                }
+            }
+            catch (System.Exception) { }
+
+            return string.IsNullOrWhiteSpace(name) ? "" : name;
+        }
+
         public SessionPlayer(string name, ushort id, string steamId)
         {
             this.name = name;

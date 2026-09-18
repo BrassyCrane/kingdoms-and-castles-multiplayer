@@ -453,6 +453,24 @@ namespace KaCMultiplayer.Combat
         }
 
         /// <summary>
+        /// Forgets what we have already said about every wolf pack, so the next sweep reports all
+        /// of them again even though nothing has changed.
+        ///
+        /// The sweep is deliberately quiet: it speaks only when an arbitrated pack differs from the
+        /// last thing it published, which keeps a map full of sleeping dens off the wire. The cost
+        /// is that a machine which is ALREADY out of step never finds out, because from the
+        /// arbiter's side nothing is happening. A den that has sat at four wolves since last year
+        /// says nothing, and a joiner who has none of them goes on seeing an empty field.
+        ///
+        /// So the silence is broken on purpose whenever somebody new needs the truth. One extra
+        /// message per den, once per join, against a divergence that otherwise lasts the session.
+        /// </summary>
+        public static void RepublishWolves()
+        {
+            lastWolfLives.Clear();
+        }
+
+        /// <summary>
         /// Publishes the pack at every wolf den this machine arbitrates whose wolves have changed.
         ///
         /// Swept rather than driven from a dirty set, and that is the cheap choice here rather than
@@ -541,6 +559,44 @@ namespace KaCMultiplayer.Combat
                 if (den == null || den.wolfData == null || m.Lives == null) return;
 
                 var pack = den.wolfData;
+
+                // WOLVES THE ARBITER HAS AND WE DO NOT, which is the other half of a pack drifting
+                // apart. The loop below can only lower health and the one after it can only kill,
+                // so before this change a pack that was SHORT here stayed short for the rest of the
+                // session: the arbiter reported four wolves, we had none, and nothing in the message
+                // could put them there.
+                //
+                // Short packs are the normal case now rather than a strange one, because a machine
+                // that does not arbitrate a den no longer spawns into it at all (see
+                // WolfSpawnAuthorityHook). Every wolf it gets, it gets from here.
+                //
+                // AddWolf is the game's own spawn: it places the wolf near its den, gives it a
+                // wander position, a speed and full health, and registers it in both the den's list
+                // and the global one. Nothing about it is invented here. We are inside a NetApply
+                // scope, which is what lets these calls past the spawn gate.
+                //
+                // Capped at the twelve a den holds in vanilla, so a malformed message cannot ask
+                // this machine to spawn an unbounded pack.
+                if (m.Lives.Count > pack.Count)
+                {
+                    int wanted = m.Lives.Count < 12 ? m.Lives.Count : 12;
+                    int added = 0;
+
+                    while (pack.Count < wanted)
+                    {
+                        den.AddWolf();
+                        added++;
+
+                        // AddWolf is expected to grow the pack by one. If it ever does not, this
+                        // would spin forever inside a message handler and hang the game.
+                        if (added > 12) break;
+                    }
+
+                    if (added > 0)
+                        NetLog.Info("wolf pack at den " + m.Den + " was " + added
+                                    + " short of the arbiter's " + m.Lives.Count + "; topped up");
+                }
+
                 int shared = pack.Count < m.Lives.Count ? pack.Count : m.Lives.Count;
 
                 for (int i = 0; i < shared; i++)
@@ -551,6 +607,30 @@ namespace KaCMultiplayer.Combat
                     // Damage only, never healing. There is no un-wounding in the game and a wolf we
                     // already believe is nearly dead must not be handed its health back.
                     if (m.Lives[i] < w.life) w.life = m.Lives[i];
+                }
+
+                // WOLVES THE ARBITER NO LONGER HAS ARE DEAD, AND HAVE TO DIE HERE TOO.
+                //
+                // The loop above only reaches wolves both sides agree exist, and that is the whole
+                // problem when a pack is being killed: WolfDen.Tick removes a dead wolf from
+                // wolfData, so the arbiter's pack SHRINKS and every message after that is shorter
+                // than ours. `shared` clamps to the shorter list, the surplus is never touched, and
+                // those wolves keep full health for the rest of the session.
+                //
+                // What that looks like in a game: the player whose island it is clears the den and
+                // sees an empty field, while everyone else still sees the pack. Their troops shoot
+                // at wolves that are not there on the owner's screen, and the wolves cannot be hurt
+                // back, because damage is suppressed away from the arbiter and the arbiter has
+                // nothing left to report about them. They can still bite.
+                //
+                // Killed the same way the rest of this method works: set life, and let the local
+                // WolfDen.Tick turn that into a death through its own code, so every machine ends
+                // up in the same state by the same route. Nothing is invented and nothing is
+                // destroyed from here.
+                for (int i = m.Lives.Count; i < pack.Count; i++)
+                {
+                    WolfDen.WolfData extra = pack.data[i];
+                    if (extra != null && extra.life > 0f) extra.life = 0f;
                 }
 
                 // Deliberately quiet on success. This message can arrive many times per second for

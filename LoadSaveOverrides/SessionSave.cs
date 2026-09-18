@@ -109,6 +109,13 @@ namespace KaCMultiplayer.LoadSaveOverrides
             ss.kingdomNames = mod.kingdomNames ?? new Dictionary<string, string>();
             ss.savedRelations = mod.relations;
             ss.savedPendingWars = mod.pendingWars;
+
+            // Restored here rather than carried on the container, because prices live in one static
+            // table for the whole session rather than per saved kingdom, and there is nothing for
+            // Unpack to hand them to.
+            KaCMultiplayer.Trade.ExportPrices.Unpack(
+                mod.exportPriceTeams, mod.exportPriceTypes, mod.exportPriceValues);
+
             return ss;
         }
 

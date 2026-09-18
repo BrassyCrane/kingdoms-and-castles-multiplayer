@@ -90,6 +90,12 @@ namespace KaCMultiplayer
                 // disconnect) this handler must not throw, or the server is left in a bad state.
                 try
                 {
+                    // FIRST, before anything that can throw. A client that leaves mid-transfer
+                    // leaves thousands of queued chunks addressed to an id that no longer exists,
+                    // and the send queue is shared: every one of those is taken out of the budget
+                    // of the players still waiting for their own copy.
+                    KaCMultiplayer.Net.SaveTransfer.Forget(ev.Client.Id);
+
                     // NetPlayers.ById returns null for an unknown client instead of throwing, so
                     // a messy disconnect no longer needs a swallowing try/catch here.
                     SessionPlayer leaving = KaCMultiplayer.Net.NetPlayers.ById(ev.Client.Id);

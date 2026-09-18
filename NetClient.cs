@@ -31,6 +31,33 @@ namespace KaCMultiplayer
             client.ConnectionFailed += Client_ConnectionFailed;
             client.Disconnected += Client_Disconnected;
             client.MessageReceived += KaCMultiplayer.Net.NetReceive.OnClient;
+
+            // WE DO NOT HANG UP ON OURSELVES, which the host already decided for its own side and
+            // this side never did.
+            //
+            // Riptide gives every connection a quality rule: if one reliable message cannot be
+            // confirmed within MaxSendAttempts tries, it drops the connection outright
+            // (PendingMessage.TrySend -> Disconnect(PoorConnection)). NetHost turns that off for
+            // every client it accepts, because receiving a multi-megabyte save is a deliberate
+            // flood and a slow ack is not a broken link. The joining player's own connection kept
+            // the default and would quality-disconnect ITSELF part way through the transfer, which
+            // the host then reported as an ordinary clean disconnect with nothing to explain it.
+            //
+            // Set on Connected rather than here, because the Connection object does not exist until
+            // the handshake completes.
+            client.Connected += (sender, args) =>
+            {
+                try
+                {
+                    if (client.Connection != null)
+                    {
+                        client.Connection.CanQualityDisconnect = false;
+                        Main.helper.Log("[net] quality-disconnect disabled for our own connection; "
+                                        + "a slow save transfer is not a broken link");
+                    }
+                }
+                catch (Exception e) { Main.helper.Log("[net] could not relax the quality rule: " + e.Message); }
+            };
         }
 
         private static void Client_Disconnected(object sender, DisconnectedEventArgs e)

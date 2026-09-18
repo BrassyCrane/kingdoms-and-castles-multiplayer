@@ -331,6 +331,16 @@ namespace KaCMultiplayer.Net
             if (!IsPlayerPair(fromTeam, toTeam)) return null;
             long key = Key(fromTeam, toTeam);
 
+            if ((int)wanted == Messages.PlayerRelationMessage.DeclineAlliance)
+            {
+                if (AllianceOfferFrom(fromTeam, toTeam) == toTeam)
+                {
+                    allianceOffers.Remove(key);
+                    Announce(fromTeam, toTeam, "declined the alliance offered by", "");
+                }
+                return null;
+            }
+
             if (wanted == World.Relations.Allies)
             {
                 if (Get(fromTeam, toTeam) == World.Relations.Allies) return null;   // already allied
@@ -347,7 +357,7 @@ namespace KaCMultiplayer.Net
 
                 allianceOffers[key] = fromTeam;
                 NetLog.Info("relations: team " + fromTeam + " offered team " + toTeam + " an alliance, waiting on them");
-                Announce(fromTeam, toTeam, "has offered an alliance to", "click Allies to accept");
+                Announce(fromTeam, toTeam, "has offered an alliance to", "awaiting a response");
                 return null;
             }
 
@@ -355,6 +365,22 @@ namespace KaCMultiplayer.Net
             {
                 if (Get(fromTeam, toTeam) == World.Relations.Enemy) return null;   // already fighting
                 if (pendingWars.ContainsKey(key)) return null;                     // already declared
+
+                // AN ALLY MUST BE RENOUNCED BEFORE THEY CAN BE FOUGHT.
+                //
+                // Breaking the alliance is a visible act that the other kingdom is told about, and
+                // it costs them nothing to see it coming. Declaring war straight out of an alliance
+                // let a player skip that step entirely, which is not a betrayal so much as a
+                // loophole. Enforced here rather than only by hiding the button, so the rule holds
+                // however the request arrives.
+                if (Get(fromTeam, toTeam) == World.Relations.Allies)
+                {
+                    NetLog.Info("relations: team " + fromTeam + " tried to declare war on its ally team "
+                                + toTeam + "; the alliance has to be broken first");
+                    Announce(fromTeam, toTeam, "cannot declare war on",
+                             "they are allied, and the alliance must be broken first");
+                    return null;
+                }
 
                 allianceOffers.Remove(key);   // an offer is plainly withdrawn
                 pendingWars[key] = WarNoticeSeasons;
@@ -522,6 +548,14 @@ namespace KaCMultiplayer.Net
         private static readonly Dictionary<long, Deal> openDeals = new Dictionary<long, Deal>();
 
         /// <summary>Applies a proposal or an answer. Runs identically on every machine.</summary>
+        /// <summary>This machine's own team, or 0 before one is assigned. 0 is safe as a
+        /// "never matches" sentinel: every real multiplayer team is MpTeamBase (5) or higher.</summary>
+        private static int MyTeamOrZero()
+        {
+            return (Player.inst != null && Player.inst.PlayerLandmassOwner != null)
+                ? Player.inst.PlayerLandmassOwner.teamId : 0;
+        }
+
         public static void ApplyDeal(Messages.DiplomacyDealMessage m)
         {
             if (m == null || !IsPlayerPair(m.FromTeam, m.ToTeam)) return;
@@ -551,19 +585,51 @@ namespace KaCMultiplayer.Net
                         };
 
                         string what = amount + " " + ResourceLabel(res);
+                        // The popup is the answer now (see Lobby/DealRequestWindow), so this line
+                        // reports what happened rather than teaching a command. The commands still
+                        // work, and are still listed under /diplo, but nobody should have to learn
+                        // one to reply to a gift.
                         Announce(m.FromTeam, m.ToTeam,
                                  demand ? ("demands " + what + " from") : ("offers " + what + " to"),
                                  AtWar(m.FromTeam, m.ToTeam)
-                                    ? "type /accept to end the war, /refuse to fight on"
-                                    : "type /accept to pay, /refuse to decline");
+                                    ? "accepting ends the war"
+                                    : "answer in the window that just opened");
+
+                        // AND A POPUP FOR THE SENDER, on whichever machine that actually is. This
+                        // message is relayed to everyone including its own sender (see
+                        // NetRegistrations), so the comparison below is true on exactly one
+                        // machine: the one that made the request, whether that came from the
+                        // resource picker or from typing /demand or /offer by hand. The receiving
+                        // side already gets a full popup asking them to answer; this is the other
+                        // half, telling the sender their own click actually landed.
+                        if (m.FromTeam == MyTeamOrZero())
+                        {
+                            string toWho = Main.KingdomNameForTeam(m.ToTeam);
+                            KaCMultiplayer.Lobby.DealNoticeWindow.ShowSent(
+                                demand ? "Demand Sent" : "Aid Sent",
+                                (demand ? "Demanded " : "Sent ") + what
+                                + (demand ? " from " : " to ") + toWho + ".");
+                        }
                         return;
                     }
 
                     case Messages.DealKind.Refuse:
                     {
-                        if (!openDeals.ContainsKey(key)) return;
+                        Deal declined;
+                        if (!openDeals.TryGetValue(key, out declined)) return;
                         openDeals.Remove(key);
                         Announce(m.FromTeam, m.ToTeam, "refused the deal from", "nothing changes");
+
+                        // Only the proposer is told by popup. The side that just clicked Decline
+                        // was looking straight at the terms a moment ago; a second popup telling
+                        // them what they themselves just did would only be in the way.
+                        if (declined.Proposer == MyTeamOrZero())
+                        {
+                            string byWho = Main.KingdomNameForTeam(Other(declined.Proposer, key));
+                            KaCMultiplayer.Lobby.DealNoticeWindow.ShowResolved("Declined",
+                                byWho + " declined your " + declined.Amount + " "
+                                + ResourceLabel(declined.Resource) + " request.");
+                        }
                         return;
                     }
 
@@ -593,6 +659,16 @@ namespace KaCMultiplayer.Net
                         Announce(m.FromTeam, m.ToTeam, "accepted the deal with",
                                  paid + " " + ResourceLabel(deal.Resource) + " paid"
                                  + (wasFighting ? ", the war is over" : ""));
+
+                        // Same reasoning as Refuse above: only the proposer gets a popup, the
+                        // acceptor already knows, they just clicked Accept.
+                        if (deal.Proposer == MyTeamOrZero())
+                        {
+                            string byWho = Main.KingdomNameForTeam(Other(deal.Proposer, key));
+                            KaCMultiplayer.Lobby.DealNoticeWindow.ShowResolved("Accepted",
+                                byWho + " accepted your " + paid + " " + ResourceLabel(deal.Resource)
+                                + " request." + (wasFighting ? " The war is over." : ""));
+                        }
                         return;
                     }
                 }
@@ -779,23 +855,39 @@ namespace KaCMultiplayer.Net
                     Tell("/demand <amount> [resource] - name your price to stop fighting");
                     Tell("/offer <amount> [resource] - offer to pay them to stop");
                     Tell("/accept or /refuse - answer what is on the table");
+                    Tell("/accept <kingdom> - when more than one kingdom is waiting on you");
                     Tell("resources: gold, wheat, wood, stone, charcoal, iron, tools, weapons, fish, apples, pork");
+                    return true;
+                }
+
+                // ANSWERING A DEAL IS RESOLVED FROM THE DEAL, not from the roster.
+                //
+                // This used to go through SoleOpponent first, which answers "the only other kingdom
+                // in the session" and deliberately gives up when there is more than one. That is a
+                // fair rule for /demand and /offer, which have to guess whom you meant. It is the
+                // wrong question entirely for /accept, because the deal on the table already says
+                // who the other party is.
+                //
+                // With a third player in the session it broke both diplomacy buttons at once. Send
+                // Aid and Demand went out correctly, landed as "type /accept to pay", and then the
+                // only way to answer them refused to work: every /accept came back "no one to
+                // negotiate with". The aid was never the problem; the reply was unreachable.
+                if (cmd == "/accept" || cmd == "/refuse")
+                {
+                    int with = SoleProposerTo(me, parts.Length >= 2 ? parts[1] : null);
+                    if (with == 0) return true;   // SoleProposerTo has already said why
+
+                    Send(me, with, cmd == "/accept" ? Messages.DealKind.Accept : Messages.DealKind.Refuse,
+                         0, FreeResourceType.Gold);
                     return true;
                 }
 
                 int them = SoleOpponent(me);
                 if (them == 0)
                 {
-                    Tell("no one to negotiate with (these commands need exactly one other kingdom)");
-                    return true;
-                }
-
-                if (cmd == "/accept" || cmd == "/refuse")
-                {
-                    if (!openDeals.ContainsKey(Key(me, them))) { Tell("there is no deal on the table"); return true; }
-
-                    Send(me, them, cmd == "/accept" ? Messages.DealKind.Accept : Messages.DealKind.Refuse,
-                         0, FreeResourceType.Gold);
+                    Tell("there is more than one other kingdom, so this command cannot tell whom you "
+                         + "mean. Use the Demand and Send Aid buttons in the diplomacy window "
+                         + "(Ctrl+Shift+D), which name the kingdom for you.");
                     return true;
                 }
 
@@ -833,6 +925,123 @@ namespace KaCMultiplayer.Net
                 Resource = (int)res
             });
         }
+
+        /// <summary>
+        /// The kingdom whose deal <paramref name="me"/> is being asked to answer, or 0 with the
+        /// reason already reported to the player.
+        ///
+        /// Only deals somebody else proposed count. Accepting your own offer is not a thing that
+        /// should happen, and leaving it possible would let a player pay themselves out of a demand
+        /// they made.
+        ///
+        /// <paramref name="named"/> is an optional kingdom name, for the case where more than one
+        /// kingdom has something on the table. Matched loosely, against the kingdom name and the
+        /// player behind it, because the name has to be typed into a chat box.
+        /// </summary>
+        private static int SoleProposerTo(int me, string named)
+        {
+            List<int> waiting = new List<int>();
+
+            foreach (KeyValuePair<long, Deal> entry in openDeals)
+            {
+                int a = TeamPair.Low(entry.Key);
+                int b = TeamPair.High(entry.Key);
+                if (a != me && b != me) continue;          // not our business
+                if (entry.Value.Proposer == me) continue;  // our own proposal, not ours to accept
+
+                waiting.Add(a == me ? b : a);
+            }
+
+            if (waiting.Count == 0)
+            {
+                Tell("there is no deal on the table");
+                return 0;
+            }
+
+            if (!string.IsNullOrEmpty(named))
+            {
+                string want = named.Trim().ToLowerInvariant();
+                for (int i = 0; i < waiting.Count; i++)
+                {
+                    string kingdom = (Main.KingdomNameForTeam(waiting[i]) ?? "").ToLowerInvariant();
+                    if (kingdom.Contains(want)) return waiting[i];
+                }
+
+                Tell("no kingdom with a deal open matches '" + named + "'");
+                return 0;
+            }
+
+            if (waiting.Count == 1) return waiting[0];
+
+            // Several at once. Naming them is more use than picking one and hoping, because
+            // accepting the wrong demand costs real resources.
+            string list = "";
+            for (int i = 0; i < waiting.Count; i++)
+            {
+                if (i > 0) list += ", ";
+                list += Main.KingdomNameForTeam(waiting[i]);
+            }
+
+            Tell("more than one kingdom is waiting on you (" + list + "). Say which: "
+                 + "/accept " + Main.KingdomNameForTeam(waiting[0]));
+            return 0;
+        }
+
+        /// <summary>
+        /// The deal <paramref name="me"/> is being asked to answer, for the popup that asks them.
+        ///
+        /// Only deals somebody ELSE proposed, for the same reason the accept path checks it: a
+        /// proposer must not be shown their own offer with an Accept button under it.
+        ///
+        /// Returns the first one found. More than one at a time is rare and the window simply asks
+        /// about them in turn, because each is answered on its own and there is nothing to gain by
+        /// showing two at once.
+        /// </summary>
+        public static bool PendingDealFor(int me, out int fromTeam, out int amount,
+                                          out FreeResourceType res, out bool theyDemand)
+        {
+            fromTeam = 0;
+            amount = 0;
+            res = FreeResourceType.Gold;
+            theyDemand = false;
+
+            foreach (KeyValuePair<long, Deal> entry in openDeals)
+            {
+                int a = TeamPair.Low(entry.Key);
+                int b = TeamPair.High(entry.Key);
+                if (a != me && b != me) continue;
+                if (entry.Value.Proposer == me) continue;
+
+                fromTeam = a == me ? b : a;
+                amount = entry.Value.Amount;
+                res = entry.Value.Resource;
+
+                // We are the payer exactly when they are demanding from us. An offer has the
+                // proposer paying, so the same field answers both directions.
+                theyDemand = entry.Value.Payer == me;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>Whether that exact deal is still open, so a reply is not sent twice.</summary>
+        public static bool DealStillOpen(int me, int them)
+        {
+            Deal deal;
+            if (!openDeals.TryGetValue(Key(me, them), out deal)) return false;
+            return deal.Proposer != me;
+        }
+
+        /// <summary>Answers a deal from the popup. Same wire as the typed command.</summary>
+        public static void AnswerDeal(int me, int them, bool accept)
+        {
+            Send(me, them, accept ? Messages.DealKind.Accept : Messages.DealKind.Refuse,
+                 0, FreeResourceType.Gold);
+        }
+
+        /// <summary>True when these two are fighting, for wording the popup.</summary>
+        public static bool AtWarWith(int a, int b) { return AtWar(a, b); }
 
         /// <summary>The one other kingdom, for callers outside this class. 0 when not a single answer.</summary>
         public static int SoleOpponentOf(int me) { return SoleOpponent(me); }
