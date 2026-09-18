@@ -826,7 +826,10 @@ namespace KaCMultiplayer.Net
             catch (Exception ex) { NetLog.Error("build place " + s.UniqueName, ex); }
         }
 
-        private static void ApplyBuildSnapshot(BuildSnapshotMessage m)
+        // internal, not private, so Dev/Invariants.cs can drive this handler directly.
+        // The check it exists for asks whether a snapshot COMMISSIONS a building rather than just
+        // marking it built, and there is no way to ask that without applying a real snapshot.
+        internal static void ApplyBuildSnapshot(BuildSnapshotMessage m)
         {
             if (IsOwnEcho(m.Origin)) return;
 

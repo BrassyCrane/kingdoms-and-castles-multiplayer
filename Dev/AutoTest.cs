@@ -238,6 +238,13 @@ namespace KaCMultiplayer.Dev
 
             CheckSessionBasics();
             CheckFakePeer();
+
+            // The class checks, before anything below disturbs the world. They read the session as
+            // it stands rather than building fixtures, so they are honest only while it is still
+            // the session the earlier phases produced. See Dev/Invariants.cs for what a "class
+            // check" is and why it is kept separate from the feature checks around it.
+            Invariants.RunAll(Check, Log);
+
             CheckTradeFixture();
             CheckDiplomacy();
             CheckChat();
@@ -255,6 +262,82 @@ namespace KaCMultiplayer.Dev
             CheckSaveLoadsBack();
             CheckIdsSurvivedTheLoad();
             PrepareHostBuildFixture();
+            PrepareLobbyDriftTrap();
+        }
+
+        // The difficulty the world is actually running at, recorded so the soak check can ask
+        // whether anything overwrote it. Minus one means the trap could not be set.
+        private static int difficultyUnderTest = -1;
+
+        /// <summary>
+        /// Sets a trap for lobby state clobbering the running game, to be read after the battle.
+        ///
+        /// A CLASS, not a bug. The lobby is the authority while a session is being set up and it
+        /// broadcasts its settings continuously, roughly twice a second, for the whole session. Any
+        /// world state that both the lobby and the game own is therefore in a fight that the lobby
+        /// wins, every half second, forever. Difficulty is the instance that was found: a Hard save
+        /// loaded into a lobby still holding the default became Peaceful within half a second and
+        /// would not stay changed, and difficulty decides a great deal, dragons do not spawn on
+        /// Peaceful at all.
+        ///
+        /// So the trap is deliberately the wrong way round. It makes the LOBBY disagree with the
+        /// GAME and then leaves them to fight for the length of the battle. If the game's value
+        /// survives, play mode is properly insulated from the lobby; if it has become the lobby's
+        /// value, whatever else was broadcast that half second is suspect too.
+        ///
+        /// Read in FinishBattle rather than here, because half a second is the whole point: a
+        /// same-frame check would pass on the broken build. This is the same prepare-then-verify
+        /// shape as the host build fixture, for the same reason.
+        /// </summary>
+        private static void PrepareLobbyDriftTrap()
+        {
+            difficultyUnderTest = -1;
+
+            try
+            {
+                if (Player.inst == null) { Log("no local kingdom, cannot set the lobby drift trap"); return; }
+
+                difficultyUnderTest = (int)Player.inst.difficulty;
+
+                // Any value the game is NOT running at. Nudging by one and wrapping off the enum's
+                // own length keeps this free of a hardcoded count, which the GameDifficulty file
+                // warns about drifting for exactly this kind of reason.
+                int choices = Enum.GetValues(typeof(GameDifficulty)).Length;
+                int disagree = (difficultyUnderTest + 1) % choices;
+                LobbySettings.Current.Difficulty = disagree;
+
+                Log("lobby drift trap set: the game is on difficulty " + difficultyUnderTest
+                    + " and the lobby now claims " + disagree
+                    + "; the game's value must still be " + difficultyUnderTest + " after the battle");
+            }
+            catch (Exception ex)
+            {
+                difficultyUnderTest = -1;
+                Main.LogEx("[SELFTEST] setting the lobby drift trap", ex);
+            }
+        }
+
+        /// <summary>Reads the trap set by <see cref="PrepareLobbyDriftTrap"/>. See its note.</summary>
+        private static void CheckLobbyDidNotClobberPlayMode()
+        {
+            if (difficultyUnderTest < 0) { Log("no lobby drift trap was set, nothing to re-check"); return; }
+
+            try
+            {
+                int now = (int)Player.inst.difficulty;
+
+                if (now != difficultyUnderTest)
+                    Log("the lobby overwrote the running game's difficulty: " + difficultyUnderTest
+                        + " became " + now + " while the session was playing");
+
+                Check("the running game's difficulty survives the lobby's broadcasts",
+                      now == difficultyUnderTest);
+            }
+            catch (Exception ex)
+            {
+                Check("the lobby drift check finished without throwing", false);
+                Main.LogEx("[SELFTEST] lobby drift", ex);
+            }
         }
 
         /// <summary>
@@ -1738,6 +1821,7 @@ namespace KaCMultiplayer.Dev
                 // The two Workshop reports: a host's building, and the host's keep, still standing
                 // after the session has actually been running.
                 CheckHostBuildSurvived();
+                CheckLobbyDidNotClobberPlayMode();
 
                 // Releasing is the single choke point every army death funnels through, so it is
                 // asserted on an army that has actually been in combat.
