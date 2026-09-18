@@ -328,6 +328,16 @@ namespace KaCMultiplayer.Net
                 // Every kingdom needs its own island, so the map has to be an island map
                 // regardless of what the world settings say.
                 World.inst.mapBias = World.MapBias.Island;
+
+                // Size and rivers from the lobby too. Only the bias used to be set here, so the
+                // host's first map was built with whatever the world object last held, which is
+                // not necessarily what the lobby shows or what a guest will be told to build.
+                if (LobbySettings.Current != null)
+                {
+                    World.inst.mapSize = LobbySettings.Current.WorldSize;
+                    World.inst.mapRiverLakes = LobbySettings.Current.WorldRivers;
+                }
+
                 World.inst.Generate();
 
                 LobbyScreen.SeedBox.text = World.inst.GetTextSeed();

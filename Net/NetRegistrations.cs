@@ -492,18 +492,25 @@ namespace KaCMultiplayer.Net
                     }
                 }
 
-                // Generation depends on the seed AND on type/size/rivers. The settings
-                // message is sent before this one, so LobbySettings.Current is
-                // already current, apply it before generating or the map comes out
-                // different until someone presses New Map.
-                if (LobbySettings.Current != null)
-                {
-                    World.inst.mapBias = LobbySettings.Current.WorldType;
-                    World.inst.mapRiverLakes = LobbySettings.Current.WorldRivers;
-                    World.inst.mapSize = LobbySettings.Current.WorldSize;
-                }
+                // Generation depends on the seed AND on type/size/rivers, and the message carries
+                // the values the host's map was really built with. Taken from here rather than
+                // from LobbySettings, which may not have arrived yet and can say "Random", which
+                // this machine would roll differently. See WorldSeedMessage.
+                World.inst.mapBias = (World.MapBias)m.MapBias;
+                World.inst.mapSize = (World.MapSize)m.MapSize;
+                World.inst.mapRiverLakes = (World.MapRiverLakes)m.RiverLakes;
 
                 World.inst.Generate(m.Seed);
+
+                // Said out loud if it did not take, because a mismatch here is precisely the
+                // "host and guest see different islands" report, and it is invisible otherwise.
+                if ((int)World.inst.generatedMapSize != m.MapSize
+                    || (int)World.inst.generatedRiverLakes != m.RiverLakes
+                    || (int)World.inst.generatedMapsBias != m.MapBias)
+                    NetLog.Warn("world seed " + m.Seed + ": asked for bias/size/rivers "
+                                + m.MapBias + "/" + m.MapSize + "/" + m.RiverLakes + " but generated "
+                                + (int)World.inst.generatedMapsBias + "/" + (int)World.inst.generatedMapSize
+                                + "/" + (int)World.inst.generatedRiverLakes);
                 LobbyScreen.mapPreviewDirty = true;
 
                 // The map has only just come into existence, and every kingdom built before now
