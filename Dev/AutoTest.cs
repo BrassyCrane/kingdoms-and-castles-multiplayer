@@ -339,6 +339,13 @@ namespace KaCMultiplayer.Dev
                 Check("the lobby drift check finished without throwing", false);
                 Main.LogEx("[SELFTEST] lobby drift", ex);
             }
+            finally
+            {
+                // Disarm the trap. The lobby's record was deliberately made wrong, and the host
+                // still sends it to anybody who joins mid-session, so leaving it would hand a later
+                // joiner the wrong difficulty for the rest of the run.
+                try { LobbySettings.Current.Difficulty = difficultyUnderTest; } catch { }
+            }
         }
 
         /// <summary>
