@@ -13,10 +13,10 @@ This repository is the source of that Workshop item. It is still in beta.
 
 A report with logs gets fixed. A report without them usually cannot be. Please attach **both**:
 
-- **Player.log**, which is where most errors actually end up:
-  `%USERPROFILE%\AppData\LocalLow\LionShield\Kingdoms and Castles\Player.log`
-  (paste that into the Windows Explorer address bar). It is overwritten every launch, so copy it
-  **before** starting the game again.
+- **Player.log**, which is where most errors actually end up. To find it, press **Windows key + R**,
+  paste `%USERPROFILE%\AppData\LocalLow\LionShield\Kingdoms and Castles` and press Enter;
+  Player.log is in the folder that opens. Every launch overwrites it, so copy it **before**
+  starting the game again.
 - **output.txt**, the mod's own log: in Steam, right-click Kingdoms and Castles, *Manage >
   Browse local files*, go up to `steamapps\workshop\content\569480\3751021307\`. It grows across
   runs, so the end of the file is the part that matters.
