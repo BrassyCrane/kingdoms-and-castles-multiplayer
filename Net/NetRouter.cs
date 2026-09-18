@@ -183,47 +183,6 @@ namespace KaCMultiplayer.Net
             return local != 0;
         }
 
-        /// <summary>
-        /// Relays private kingdom state only to allied players when fog of war is enabled.
-        /// The host still applies the message, because the host is the authority that keeps the
-        /// shared world coherent; clients who are neutral or enemies simply do not receive the
-        /// live reveal. With fog off this keeps the old broadcast-to-everyone behaviour.
-        /// </summary>
-        public static bool RelayVisibleToAlliesAndApply(IOriginated message, NetContext context)
-        {
-            if (transport == null || !transport.IsServer) return false;
-
-            message.Origin = context.SenderId;
-
-            ushort local = LocalClientId;
-            if (!LobbySettings.Current.FogOfWar)
-            {
-                Broadcast(message, local);
-                return local != 0;
-            }
-
-            SessionPlayer origin = NetPlayers.ById(context.SenderId);
-            int originTeam = origin != null && origin.inst != null && origin.inst.PlayerLandmassOwner != null
-                ? origin.inst.PlayerLandmassOwner.teamId : int.MinValue;
-
-            foreach (ushort clientId in Main.clientSteamIds.Keys)
-            {
-                if (clientId == 0 || clientId == context.SenderId || clientId == local) continue;
-
-                SessionPlayer target = NetPlayers.ById(clientId);
-                int targetTeam = target != null && target.inst != null && target.inst.PlayerLandmassOwner != null
-                    ? target.inst.PlayerLandmassOwner.teamId : int.MinValue;
-
-                if (originTeam == int.MinValue || targetTeam == int.MinValue
-                    || PlayerRelations.Get(originTeam, targetTeam) != World.Relations.Allies)
-                    continue;
-
-                SendTo(message, clientId);
-            }
-
-            return local != 0;
-        }
-
         private static bool TryEncode(INetMessage message, out Message encoded)
         {
             encoded = null;

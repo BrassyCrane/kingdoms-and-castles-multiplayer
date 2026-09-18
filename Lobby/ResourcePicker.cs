@@ -87,7 +87,7 @@ namespace KaCMultiplayer.Lobby
             if (root != null) root.SetActive(false);
         }
 
-        /// <summary>Escape closes it. Called from the diplomacy window's own tick.</summary>
+        /// <summary>Escape closes it. Called every frame from Main.Update, beside the other popups.</summary>
         public static void Tick()
         {
             if (!IsOpen) return;

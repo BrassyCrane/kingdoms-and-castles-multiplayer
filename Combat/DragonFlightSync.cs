@@ -216,11 +216,19 @@ namespace KaCMultiplayer.Combat
                 Guid id = m.Dragons[i];
                 if (id == Guid.Empty) continue;
 
+                // HasFired is carried over from what we already had. Rebuilding the struct without it
+                // reset it to false on every message, and a flying dragon is in nearly every message,
+                // so Steer re-sent FireBreath every few ticks: exactly the "permanently about to roar"
+                // behaviour Steer's own comment says it avoids.
+                Target before;
+                bool hadFired = targets.TryGetValue(id, out before) && before.HasFired;
+
                 targets[id] = new Target
                 {
                     Position = m.Positions[i],
                     Rotation = m.Rotations[i],
-                    Firing = m.Firing[i]
+                    Firing = m.Firing[i],
+                    HasFired = hadFired
                 };
             }
 

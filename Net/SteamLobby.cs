@@ -158,6 +158,7 @@ namespace KaCMultiplayer.Net
                 KaCMultiplayer.Lobby.DealRequestWindow.Reset();
                 KaCMultiplayer.Lobby.DealNoticeWindow.Reset();
                 KaCMultiplayer.Lobby.AllianceRequestWindow.Reset();
+                KaCMultiplayer.Lobby.ResourcePicker.Reset();
             });
 
             Attempt("leave the Steam lobby", delegate
