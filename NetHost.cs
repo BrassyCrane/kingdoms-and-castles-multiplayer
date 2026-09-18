@@ -72,7 +72,15 @@ namespace KaCMultiplayer
                 KaCMultiplayer.Net.NetRouter.SendTo(new KaCMultiplayer.Net.Messages.HandshakeMessage
                 {
                     AssignedClientId = ev.Client.Id,
+
+                    // SteamLobby.loadingSave is only true while the HOST is sitting in the save
+                    // picker, and it drops the moment the save finishes unpacking. A player who
+                    // joins a few seconds later was therefore told "fresh game", sent to name a
+                    // kingdom, and given a brand new one on top of a world that already held
+                    // theirs. LoadIdentity.IsLoadedSession stays true for the life of a loaded
+                    // session, which is the question actually being asked here.
                     LoadingSave = SteamLobby.loadingSave
+                               || KaCMultiplayer.LoadSaveOverrides.LoadIdentity.IsLoadedSession
                 }, ev.Client.Id);
             };
 
@@ -82,6 +90,12 @@ namespace KaCMultiplayer
                 // disconnect) this handler must not throw, or the server is left in a bad state.
                 try
                 {
+                    // FIRST, before anything that can throw. A client that leaves mid-transfer
+                    // leaves thousands of queued chunks addressed to an id that no longer exists,
+                    // and the send queue is shared: every one of those is taken out of the budget
+                    // of the players still waiting for their own copy.
+                    KaCMultiplayer.Net.SaveTransfer.Forget(ev.Client.Id);
+
                     // NetPlayers.ById returns null for an unknown client instead of throwing, so
                     // a messy disconnect no longer needs a swallowing try/catch here.
                     SessionPlayer leaving = KaCMultiplayer.Net.NetPlayers.ById(ev.Client.Id);
@@ -206,7 +220,18 @@ namespace KaCMultiplayer
         // Riptide is polled, not evented: nothing arrives until Update pumps it.
         private void Update()
         {
-            server.Update();
+            // Only poll a server that is actually listening.
+            //
+            // Riptide's Server.Update polls the transport unconditionally, and
+            // SteamServer.connections is allocated in Start(), so polling a server that was never
+            // started dereferences null. It threw ONCE PER FRAME for the whole time the game sat
+            // in the menu: 3,675 NullReferenceExceptions in a single session, every one of them
+            // caught by Unity and written to Player.log.
+            //
+            // The cost is not only the exceptions. That flood is what made Player.log unreadable,
+            // and Player.log is where the cave-container bug hid while it silently stopped every
+            // farm in the game from harvesting. A log nobody can read is a bug nobody can find.
+            if (server != null && server.IsRunning) server.Update();
         }
 
         private void OnApplicationQuit()

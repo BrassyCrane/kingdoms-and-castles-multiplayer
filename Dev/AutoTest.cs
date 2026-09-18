@@ -260,6 +260,7 @@ namespace KaCMultiplayer.Dev
             PrepareIdSurvivalFixture();
             CheckSaveRoundTrip();
             CheckSaveLoadsBack();
+            CheckMaterialsAreComplete();
             CheckIdsSurvivedTheLoad();
             PrepareHostBuildFixture();
             PrepareLobbyDriftTrap();
@@ -417,6 +418,123 @@ namespace KaCMultiplayer.Dev
             Check("we still own our own kingdom after loading",
                   Player.inst != null && Player.inst.PlayerLandmassOwner != null
                   && Player.inst.PlayerLandmassOwner.teamId == teamBefore);
+        }
+
+        /// <summary>
+        /// Every kingdom can actually be DRAWN.
+        ///
+        /// Written after a night of shipping four fixes for what turned out to be one missing null
+        /// check, each of which was found by a player looking at the screen and saying the farms
+        /// had gone hot pink. Nothing in this run could see it: the world loaded, the counts were
+        /// right, the kingdoms were whole, and every one of those assertions passed while the game
+        /// drew a magenta city. Magenta is what Unity paints when a material is null, and nothing
+        /// here was checking for a null material.
+        ///
+        /// The specific chain it exists to catch: LandmassOwner.SetBannerIdx ends by calling
+        /// UnitSystem.UpdateMaterialFor, which walks every army dereferencing generalComponent with
+        /// no null check. One army without a general mid-load throws, and everything after that
+        /// call is skipped -- including the loop that builds UniMaterialsCracked, the array every
+        /// building picks its material from. So UniMaterialsCracked is asserted element by element
+        /// rather than merely for being non-null: a half-built array is exactly what that bug
+        /// leaves behind.
+        /// </summary>
+        private static void CheckMaterialsAreComplete()
+        {
+            try
+            {
+                int kingdoms = 0, litKingdoms = 0, crackedOk = 0;
+
+                foreach (SessionPlayer kp in Main.kCPlayers.Values)
+                {
+                    if (kp == null || kp.inst == null) continue;
+
+                    LandmassOwner owner = kp.inst.PlayerLandmassOwner;
+                    if (owner == null) continue;
+
+                    kingdoms++;
+
+                    bool lit = owner.UniMaterial != null
+                            && owner.BuildingMaterial != null
+                            && owner.FlagMaterial != null
+                            && owner.UniMaterialFogClip != null;
+
+                    if (lit) litKingdoms++;
+                    else
+                        Log("  team " + owner.teamId + " is missing a livery material: "
+                            + "uni=" + (owner.UniMaterial != null)
+                            + " building=" + (owner.BuildingMaterial != null)
+                            + " flag=" + (owner.FlagMaterial != null)
+                            + " fogClip=" + (owner.UniMaterialFogClip != null));
+
+                    // The array buildings pick from. Element by element, because the bug this
+                    // catches leaves it allocated and empty rather than null.
+                    bool cracked = owner.UniMaterialsCracked != null && owner.UniMaterialsCracked.Length > 0;
+                    if (cracked)
+                    {
+                        for (int i = 0; i < owner.UniMaterialsCracked.Length; i++)
+                            if (owner.UniMaterialsCracked[i] == null) { cracked = false; break; }
+                    }
+
+                    if (cracked) crackedOk++;
+                    else
+                        Log("  team " + owner.teamId + " has no usable damaged-building materials "
+                            + "(UniMaterialsCracked), which is what draws a city magenta");
+                }
+
+                Check("every kingdom has its livery materials", kingdoms > 0 && litKingdoms == kingdoms);
+                Check("every kingdom has a complete UniMaterialsCracked", kingdoms > 0 && crackedOk == kingdoms);
+
+                // Ships take their colour once, in Init, and nothing ever asks again, so one built
+                // before its owner had a banner keeps a null material for the rest of the session.
+                int ships = 0, paintedShips = 0;
+                if (ShipSystem.inst != null && ShipSystem.inst.ships != null)
+                {
+                    var all = ShipSystem.inst.ships;
+                    for (int i = 0; i < all.Count; i++)   // .Count, never .data.Length
+                    {
+                        ShipBase ship = all.data[i];
+                        if (ship == null || ship.meshes == null || ship.meshes.Length == 0) continue;
+
+                        ships++;
+                        bool painted = true;
+                        for (int j = 0; j < ship.meshes.Length; j++)
+                            if (ship.meshes[j] == null || ship.meshes[j].sharedMaterial == null) { painted = false; break; }
+
+                        if (painted) paintedShips++;
+                        else Log("  a " + ship.type + " on team " + ship.teamID + " has an unpainted hull");
+                    }
+                }
+
+                if (ships == 0) Log("no ships in the world, so hull materials were not checked");
+                else Check("every ship hull has a material", paintedShips == ships);
+
+                // The other half of the same method: the first loop of UpdateMaterialFor fills
+                // UnitCategory.mat, and the soldier draw loop skips any category without one.
+                var categories = KaCMultiplayer.Net.PrivateField.Get<List<UnitSystem.UnitCategory>>(
+                    UnitSystem.inst, "unitCategoriesGen");
+
+                if (categories == null) Log("could not read unitCategoriesGen, so unit materials were not checked");
+                else
+                {
+                    int cats = 0, litCats = 0;
+                    for (int i = 0; i < categories.Count; i++)
+                    {
+                        UnitSystem.UnitCategory cat = categories[i];
+                        if (cat == null) continue;
+
+                        cats++;
+                        if (cat.mat != null) litCats++;
+                        else Log("  unit category for team " + cat.teamId + " has no material, so its soldiers do not draw");
+                    }
+
+                    Check("every unit category has a material", cats > 0 && litCats == cats);
+                }
+            }
+            catch (Exception e)
+            {
+                Check("the material check ran without throwing", false);
+                Log("material check threw: " + e.Message);
+            }
         }
 
         /// <summary>

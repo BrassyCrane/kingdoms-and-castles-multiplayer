@@ -147,10 +147,17 @@ namespace KaCMultiplayer.Net
                 KaCMultiplayer.Combat.CombatSync.Reset();
                 KaCMultiplayer.Combat.FrozenKingdoms.Reset();
                 KaCMultiplayer.Combat.ArmyPositionSync.Reset();
+                KaCMultiplayer.Combat.DragonFlightSync.Reset();
                 StreamerEffectSync.Reset();
                 Main.BuildingCompleteBuildHook.Reset();
                 InGameChat.Reset();
                 KaCMultiplayer.Lobby.DiplomacyWindow.Reset();
+                KaCMultiplayer.Trade.ExportPrices.Reset();
+                KaCMultiplayer.Trade.ExportPricesWindow.Reset();
+
+                KaCMultiplayer.Lobby.DealRequestWindow.Reset();
+                KaCMultiplayer.Lobby.DealNoticeWindow.Reset();
+                KaCMultiplayer.Lobby.AllianceRequestWindow.Reset();
             });
 
             Attempt("leave the Steam lobby", delegate
@@ -174,9 +181,36 @@ namespace KaCMultiplayer.Net
                 foreach (SessionPlayer kp in Main.kCPlayers.Values)
                 {
                     if (kp == null || kp.inst == local) continue;
-                    if (kp.gameObject == null) continue;
-                    if (local != null && kp.gameObject == local.gameObject) continue;
-                    UnityEngine.Object.Destroy(kp.gameObject);
+                    if (local != null && kp.gameObject != null && kp.gameObject == local.gameObject) continue;
+
+                    // THE BUILDINGS GO TOO, and they are not children of the kingdom object.
+                    //
+                    // Player.Reset creates buildingContainer as its own ROOT GameObject named
+                    // "Buildings" and every structure is parented under that, not under the Player.
+                    // So destroying the kingdom on its own removed the bookkeeping and left the
+                    // town standing in the scene, with nothing referencing it and nothing left to
+                    // clean it up.
+                    //
+                    // What that looked like: load a save, back out without pressing Start, start a
+                    // fresh kingdom, and the previous save's castle and houses were still sitting
+                    // on the new map. It survived generating a whole new world, because world
+                    // generation has no idea these objects exist.
+                    if (kp.inst != null && kp.inst.buildingContainer != null)
+                        UnityEngine.Object.Destroy(kp.inst.buildingContainer);
+
+                    // AND THE PEOPLE, who are a third separate thing again.
+                    //
+                    // A villager is its own scene object. It is not a child of the kingdom and not
+                    // a child of the building container, and Player.Reset only Clear()s the lists
+                    // that track them, which drops the bookkeeping and leaves the objects. So a
+                    // kingdom torn down without this left its population behind: villagers walking
+                    // around the next world, across open water where the island they were standing
+                    // on used to be.
+                    RemoveVillagers(kp.inst, kp.inst != null ? kp.inst.Workers : null);
+                    RemoveVillagers(kp.inst, kp.inst != null ? kp.inst.Homeless : null);
+
+                    if (kp.gameObject != null)
+                        UnityEngine.Object.Destroy(kp.gameObject);
                 }
             });
 
@@ -214,6 +248,47 @@ namespace KaCMultiplayer.Net
             });
 
             loadingSave = false;
+        }
+
+        /// <summary>
+        /// Takes a departing kingdom's people out of the world.
+        ///
+        /// A Villager is not a MonoBehaviour and has no GameObject to destroy: it derives from
+        /// InstanceSystem.Owner and is drawn by the instance system, with its body, head and legs
+        /// as separate transforms. So it cannot simply be Destroyed, and clearing the list that
+        /// tracks it only drops the bookkeeping, which is what left a kingdom's population walking
+        /// around the next world, out across open water where their island used to be.
+        ///
+        /// Player.RemovePersonFromWorld is the game's own removal: it takes them off the villager
+        /// grid and the landmass, makes them leave home and quit their job, and removes them from
+        /// both lists. Held resources go first, because a villager carrying wood when the world
+        /// ends leaves the wood behind otherwise.
+        ///
+        /// Walked backwards, because RemovePersonFromWorld removes from the very list being
+        /// iterated.
+        /// </summary>
+        private static void RemoveVillagers(Player owner, ArrayExt<Villager> people)
+        {
+            if (owner == null || people == null) return;
+
+            for (int i = people.Count - 1; i >= 0; i--)
+            {
+                Villager v = people.data[i];
+                if (v == null) continue;
+
+                // Per villager, so one awkward case cannot strand the rest of the population.
+                try
+                {
+                    v.DestroyHeldResources();
+                    owner.RemovePersonFromWorld(v);
+                }
+                catch (Exception e)
+                {
+                    Main.helper.Log("could not remove a departing villager: " + e.Message);
+                }
+            }
+
+            people.Clear();
         }
 
         private static void Attempt(string what, Action step)
