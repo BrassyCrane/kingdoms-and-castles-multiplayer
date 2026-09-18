@@ -10,7 +10,13 @@ Usage: python membercheck.py
 """
 import pathlib, re, sys, collections
 
-ROOT = pathlib.Path(r'C:\Users\User\Labs\kcm-multiplayer')
+# The repo root, derived from this file rather than hardcoded.
+#
+# It USED to be an absolute path on a previous machine, which meant the check silently found
+# zero .cs files and reported "no unresolved Type.Member references" on every run. A checker
+# that cannot fail is worse than no checker, because it gets quoted as evidence. dupes.py
+# already derived its root this way; this now matches it.
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 SKIP_DIRS = {'.git', 'docs'}
 
 # Members that come from Unity / the BCL rather than from the mod. A reference to one of
