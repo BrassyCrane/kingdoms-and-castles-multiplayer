@@ -31,7 +31,7 @@ Fixes are very welcome, and they ship on the main Workshop item with your name o
 
 ## Credits
 
-Created and maintained by **BrassyCrane**.
+Created by **BrassyCrane**. Maintained by **BrassyCrane** and **Mr.Sajtos**.
 
 **Bill Kerman** found and fixed, in his community patch (merged in 0.14.0):
 
