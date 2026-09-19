@@ -318,8 +318,7 @@ namespace KaCMultiplayer
             {
                 try
                 {
-                    SfxSystem.PlayUiSelect();
-                    action();
+                    action();   // the click sound comes from ClickSound, on every prefab button
                 }
                 catch (Exception ex)
                 {

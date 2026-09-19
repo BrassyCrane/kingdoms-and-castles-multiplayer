@@ -12,15 +12,11 @@ namespace KaCMultiplayer.Lobby
     /// "Demand what, and how much." A grid of every resource a kingdom can be asked for, with an
     /// amount, opened from the Demand button on a diplomacy row.
     ///
-    /// BUILT IN CODE, not from a prefab. Every other screen in the mod comes from the asset
-    /// bundle, and this one deliberately does not: a picker over <c>FreeResourceType</c> has to
-    /// match whatever that enum holds, and a prefab would freeze today's eleven resources into
-    /// art that nobody would remember to update. Reading the list from
-    /// <see cref="PlayerRelations.Demandable"/> means a game update that adds a resource shows it
-    /// here on its own.
+    /// Built from the bundle's pickerui prefab. The prefab holds one hidden option button for
+    /// resources and one for amounts, and this clones them from <see cref="PlayerRelations.Demandable"/>,
+    /// so a resource a game update adds still shows up here without new art.
     ///
-    /// Styling is deliberately plain and self-contained, because it has no prefab to inherit
-    /// from. It sits over the diplomacy window and closes on any choice or on Escape.
+    /// It sits over the diplomacy window and closes on any choice or on Escape.
     /// </summary>
     public static class ResourcePicker
     {
@@ -46,13 +42,8 @@ namespace KaCMultiplayer.Lobby
         /// </summary>
         private static bool aidMode;
 
-        private static TextMeshProUGUI titleLabel, primaryLabel, secondaryLabel;
-
-        private static readonly Color cPanel = new Color(0.10f, 0.14f, 0.20f, 0.97f);
-        private static readonly Color cBorder = new Color(0.27f, 0.35f, 0.46f, 1f);
-        private static readonly Color cButton = new Color(0.16f, 0.22f, 0.30f, 1f);
-        private static readonly Color cChosen = new Color(0.30f, 0.52f, 0.36f, 1f);
-        private static readonly Color cText = new Color(0.88f, 0.92f, 0.96f, 1f);
+        private static TextMeshProUGUI titleLabel;
+        private static Button primaryButton, secondaryButton;
 
         public static bool IsOpen { get { return root != null && root.activeSelf; } }
 
@@ -100,162 +91,65 @@ namespace KaCMultiplayer.Lobby
             try { if (root != null) UnityEngine.Object.Destroy(root); }
             catch { }
 
-            try { if (canvasObj != null) UnityEngine.Object.Destroy(canvasObj); }
-            catch { }
-
-            canvasObj = null;
-
             root = null;
             summary = null;
             titleLabel = null;
-            primaryLabel = null;
-            secondaryLabel = null;
+            primaryButton = secondaryButton = null;
             resourceButtons.Clear();
             amountButtons.Clear();
         }
 
         /// <summary>
-        /// The picker's own screen-space canvas.
-        ///
-        /// It used to be parented to MenuUi.Root, which is the MAIN MENU's UI. That object is
-        /// switched off while a game is running, so during play the picker was built correctly,
-        /// activated correctly, and drawn nowhere: clicking Demand appeared to do nothing at all.
-        ///
-        /// Its own overlay canvas is what AllianceRequestWindow already does, for the same reason
-        /// and with the same result, and it removes the dependency on the game's menu hierarchy
-        /// entirely. Ordered just under the alliance prompt so a request that arrives while this is
-        /// open still lands on top.
+        /// Builds the picker once. Ordered just under the alliance popup, so a request that
+        /// arrives while this is open still lands on top.
         /// </summary>
-        private static GameObject canvasObj;
-
-        private static Transform EnsureCanvas()
-        {
-            if (canvasObj != null) return canvasObj.transform;
-
-            try
-            {
-                canvasObj = new GameObject("ResourcePickerCanvas",
-                    typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-
-                Canvas c = canvasObj.GetComponent<Canvas>();
-                c.renderMode = RenderMode.ScreenSpaceOverlay;
-                c.sortingOrder = 5090;
-
-                CanvasScaler scaler = canvasObj.GetComponent<CanvasScaler>();
-                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                scaler.referenceResolution = new Vector2(1920f, 1080f);
-                scaler.matchWidthOrHeight = 0.5f;
-
-                return canvasObj.transform;
-            }
-            catch (Exception e)
-            {
-                NetLog.Error("creating the resource picker canvas", e);
-                return null;
-            }
-        }
-
         private static void Build()
         {
-            Transform parent = EnsureCanvas();
-            if (parent == null) { NetLog.Warn("resource picker: could not create a canvas"); return; }
+            root = Popup.Create("ResourcePicker", LobbyPrefabs.Picker, 5090);
+            if (root == null) return;
 
-            root = Panel("ResourcePicker", parent, 560f, 430f);
+            titleLabel = Popup.Find<TextMeshProUGUI>(root, "Window/Title");
+            summary = Popup.Find<TextMeshProUGUI>(root, "Window/Summary");
 
-            titleLabel = Label(root.transform, "Demand from another kingdom", 20f, FontStyles.Bold, 0f, 180f, 520f, 34f);
-
-            // Resources, four to a row.
             resourceButtons.Clear();
-            FreeResourceType[] types = PlayerRelations.Demandable;
-            const float bw = 124f, bh = 34f, gapX = 6f, gapY = 6f;
-
-            for (int i = 0; i < types.Length; i++)
+            GameObject resourceTemplate = Popup.Find<Transform>(root, "Window/Resources/Option").gameObject;
+            foreach (FreeResourceType t in PlayerRelations.Demandable)
             {
-                int col = i % 4, rowIdx = i / 4;
-                float x = (col - 1.5f) * (bw + gapX);
-                float y = 130f - rowIdx * (bh + gapY);
-
-                FreeResourceType t = types[i];
-                Button b = MakeButton(root.transform, PlayerRelations.ResourceLabel(t), x, y, bw, bh,
-                                      delegate { chosen = t; Refresh(); });
-                resourceButtons.Add(b);
+                FreeResourceType captured = t;
+                resourceButtons.Add(Popup.AddOption(resourceTemplate, PlayerRelations.ResourceLabel(t),
+                                                    delegate { chosen = captured; Refresh(); }));
             }
-
-            Label(root.transform, "How much", 16f, FontStyles.Normal, 0f, -20f, 520f, 26f);
 
             amountButtons.Clear();
-            const float aw = 68f, ah = 32f, agap = 6f;
-            for (int i = 0; i < Amounts.Length; i++)
+            GameObject amountTemplate = Popup.Find<Transform>(root, "Window/Amounts/Option").gameObject;
+            foreach (int a in Amounts)
             {
-                float x = (i - (Amounts.Length - 1) / 2f) * (aw + agap);
-                int amount = Amounts[i];
-                Button b = MakeButton(root.transform, amount.ToString(), x, -56f, aw, ah,
-                                      delegate { chosenAmount = amount; Refresh(); });
-                amountButtons.Add(b);
+                int captured = a;
+                amountButtons.Add(Popup.AddOption(amountTemplate, a.ToString(),
+                                                  delegate { chosenAmount = captured; Refresh(); }));
             }
-
-            summary = Label(root.transform, "", 17f, FontStyles.Normal, 0f, -104f, 520f, 30f);
-
-            // A donor built once and harvested three times, purely for its button's real art (see
-            // KacModalStyle). The grid above stays the plain style it has always been: it is a
-            // custom resource-type toggle, not a plain action, so there is no real button in the
-            // bundle it could honestly borrow from, and it is the one part of this screen that has
-            // already caused a real, shipped bug (a Demand button once cloned inactive). The three
-            // buttons a player actually commits with are worth the real art; the grid is left
-            // alone rather than risked for a cosmetic match.
-            KacModalStyle.Panel donor = KacModalStyle.Build(root.transform);
 
             // Both handlers read aidMode when they are CLICKED rather than when they are built,
             // so the same two buttons serve a demand and a gift and simply swap which is which.
-            Button primary = ActionButton(donor, "Demand it", -110f, -160f, delegate
+            primaryButton = Popup.Find<Button>(root, "Window/Primary");
+            Popup.OnClick(primaryButton, delegate
             {
                 PlayerRelations.Send(localTeam, targetTeam,
                     aidMode ? Net.Messages.DealKind.Offer : Net.Messages.DealKind.Demand,
                     chosenAmount, chosen);
                 Close();
             });
-            primaryLabel = primary == null ? null : primary.GetComponentInChildren<TextMeshProUGUI>();
 
-            Button secondary = ActionButton(donor, "Offer it instead", 110f, -160f, delegate
+            secondaryButton = Popup.Find<Button>(root, "Window/Secondary");
+            Popup.OnClick(secondaryButton, delegate
             {
                 PlayerRelations.Send(localTeam, targetTeam,
                     aidMode ? Net.Messages.DealKind.Demand : Net.Messages.DealKind.Offer,
                     chosenAmount, chosen);
                 Close();
             });
-            secondaryLabel = secondary == null ? null : secondary.GetComponentInChildren<TextMeshProUGUI>();
 
-            ActionButton(donor, "Cancel", 0f, -205f, delegate { Close(); });
-
-            // The donor's own panel, backdrop, title and description are of no further use once
-            // its button has been cloned three times; the clones were reparented onto this screen
-            // as each was made, so destroying it here takes nothing they depend on with it.
-            if (donor != null) UnityEngine.Object.Destroy(donor.Root);
-        }
-
-        /// <summary>
-        /// One of the three commit buttons (Demand it / Offer it instead / Cancel). Clones its
-        /// art from <paramref name="donor"/> when one was built; falls back to the plain flat
-        /// button, unchanged from before that art existed, if it was not.
-        /// </summary>
-        private static Button ActionButton(KacModalStyle.Panel donor, string caption, float x, float y,
-                                           UnityEngine.Events.UnityAction onClick)
-        {
-            if (donor != null)
-            {
-                Button real = KacModalStyle.CloneButton(donor, caption, root.transform);
-                if (real != null)
-                {
-                    RectTransform rt = real.GetComponent<RectTransform>();
-                    if (rt != null) rt.anchoredPosition = new Vector2(x, y);
-
-                    KacModalStyle.SetLabel(real, caption);
-                    KacModalStyle.SetClick(real, onClick);
-                    return real;
-                }
-            }
-
-            return MakeButton(root.transform, caption, x, y, 190f, 40f, onClick);
+            Popup.OnClick(Popup.Find<Button>(root, "Window/Cancel"), Close);
         }
 
         /// <summary>Repaints the selection highlight and the sentence under it.</summary>
@@ -263,17 +157,19 @@ namespace KaCMultiplayer.Lobby
         {
             // Retitled per opening, because the same grid means two opposite things and the only
             // thing telling them apart is the wording.
+            string target = Main.KingdomNameForTeam(targetTeam);
+            if (string.IsNullOrWhiteSpace(target)) target = "another kingdom";
             if (titleLabel != null)
-                titleLabel.text = aidMode ? "Send aid to another kingdom" : "Demand from another kingdom";
-            if (primaryLabel != null) primaryLabel.text = aidMode ? "Send it" : "Demand it";
-            if (secondaryLabel != null) secondaryLabel.text = aidMode ? "Demand it instead" : "Offer it instead";
+                titleLabel.text = aidMode ? "Send aid to " + target : "Demand from " + target;
+            Popup.SetLabel(primaryButton, aidMode ? "Send it" : "Demand it");
+            Popup.SetLabel(secondaryButton, aidMode ? "Demand it instead" : "Offer it instead");
 
             FreeResourceType[] types = PlayerRelations.Demandable;
             for (int i = 0; i < resourceButtons.Count && i < types.Length; i++)
-                Tint(resourceButtons[i], types[i] == chosen);
+                Popup.Select(resourceButtons[i], types[i] == chosen);
 
             for (int i = 0; i < amountButtons.Count && i < Amounts.Length; i++)
-                Tint(amountButtons[i], Amounts[i] == chosenAmount);
+                Popup.Select(amountButtons[i], Amounts[i] == chosenAmount);
 
             if (summary != null)
             {
@@ -287,80 +183,6 @@ namespace KaCMultiplayer.Lobby
                     ? ("Ask for " + what + " to end the war. They may accept or refuse.")
                     : ("Ask for " + what + ". They may accept or refuse.");
             }
-        }
-
-        private static void Tint(Button b, bool selected)
-        {
-            if (b == null) return;
-            Image img = b.GetComponent<Image>();
-            if (img != null) img.color = selected ? cChosen : cButton;
-        }
-
-        // ---- small UI builders ----------------------------------------------------------
-        //
-        // Deliberately minimal. This is the only screen in the mod without a prefab, so these
-        // exist to keep Build() readable rather than to be a general UI toolkit.
-
-        private static GameObject Panel(string name, Transform parent, float w, float h)
-        {
-            GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image));
-            go.transform.SetParent(parent, false);
-
-            RectTransform rt = go.GetComponent<RectTransform>();
-            rt.sizeDelta = new Vector2(w, h);
-            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-            rt.anchoredPosition = Vector2.zero;
-
-            Image img = go.GetComponent<Image>();
-            img.color = cPanel;
-
-            Outline outline = go.AddComponent<Outline>();
-            outline.effectColor = cBorder;
-            outline.effectDistance = new Vector2(2f, -2f);
-
-            go.transform.SetAsLastSibling();   // over the diplomacy window, not behind it
-            return go;
-        }
-
-        private static TextMeshProUGUI Label(Transform parent, string text, float size,
-                                             FontStyles style, float x, float y, float w, float h)
-        {
-            GameObject go = new GameObject("Label", typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-
-            RectTransform rt = go.GetComponent<RectTransform>();
-            rt.sizeDelta = new Vector2(w, h);
-            rt.anchoredPosition = new Vector2(x, y);
-
-            TextMeshProUGUI tmp = go.AddComponent<TextMeshProUGUI>();
-            tmp.text = text;
-            tmp.fontSize = size;
-            tmp.fontStyle = style;
-            tmp.color = cText;
-            tmp.alignment = TextAlignmentOptions.Center;
-            tmp.raycastTarget = false;
-            return tmp;
-        }
-
-        private static Button MakeButton(Transform parent, string text, float x, float y,
-                                         float w, float h, UnityEngine.Events.UnityAction onClick)
-        {
-            GameObject go = new GameObject("Button", typeof(RectTransform), typeof(Image), typeof(Button));
-            go.transform.SetParent(parent, false);
-
-            RectTransform rt = go.GetComponent<RectTransform>();
-            rt.sizeDelta = new Vector2(w, h);
-            rt.anchoredPosition = new Vector2(x, y);
-
-            go.GetComponent<Image>().color = cButton;
-
-            Button b = go.GetComponent<Button>();
-            b.onClick.AddListener(onClick);
-
-            TextMeshProUGUI tmp = Label(go.transform, text, 15f, FontStyles.Normal, 0f, 0f, w, h);
-            tmp.enableWordWrapping = false;
-
-            return b;
         }
     }
 }
