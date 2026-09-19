@@ -61,6 +61,7 @@
 
         // 1080-1089  economy
         EconomySnapshot = 1080,
+        TaxRate = 1081,
 
         // 1090-1109  population
         VillagerAdd = 1090,

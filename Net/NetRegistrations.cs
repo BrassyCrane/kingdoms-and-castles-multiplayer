@@ -273,6 +273,12 @@ namespace KaCMultiplayer.Net
             NetRegistry.OnClient<EconomySnapshotMessage>(NetMessageId.EconomySnapshot,
                 (m, ctx) => ApplyEconomySnapshot(m));
 
+            NetRegistry.Register<TaxRateMessage>(NetMessageId.TaxRate);
+            NetRegistry.OnServer<TaxRateMessage>(NetMessageId.TaxRate,
+                (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) ApplyTaxRate(m); });
+            NetRegistry.OnClient<TaxRateMessage>(NetMessageId.TaxRate,
+                (m, ctx) => ApplyTaxRate(m));
+
             NetRegistry.Register<KeepUpgradeMessage>(NetMessageId.KeepUpgrade);
             NetRegistry.OnServer<KeepUpgradeMessage>(NetMessageId.KeepUpgrade,
                 (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) ApplyKeepUpgrade(m); });
@@ -1229,6 +1235,30 @@ namespace KaCMultiplayer.Net
                     player.inst.resourcesTotal = r;
             }
             catch (Exception ex) { NetLog.Error("economy snapshot", ex); }
+        }
+
+        /// <summary>
+        /// Sets another kingdom's tax rate on this machine's copy of that kingdom, so its homes are
+        /// taxed at the owner's rate and the host saves the rate the owner actually chose.
+        ///
+        /// The island and rate come off the wire, so both are checked: SetTaxRate indexes an array
+        /// sized to the map, and the game's own buttons never go outside 0 to 3.
+        /// </summary>
+        internal static void ApplyTaxRate(TaxRateMessage m)
+        {
+            if (IsOwnEcho(m.Origin)) return;   // we set our own rate before sending it
+
+            SessionPlayer player;
+            if (!NetPlayers.TryGet(m.Origin, "tax rate", out player) || player.inst == null) return;
+
+            try
+            {
+                if (World.inst == null || m.LandMass < 0 || m.LandMass >= World.inst.NumLandMasses) return;
+                if (float.IsNaN(m.Rate) || m.Rate < 0f || m.Rate > 3f) return;
+
+                player.inst.SetTaxRate(m.LandMass, m.Rate);
+            }
+            catch (Exception ex) { NetLog.Error("tax rate", ex); }
         }
 
         private static void ApplyKeepUpgrade(KeepUpgradeMessage m)
