@@ -97,13 +97,20 @@ foreach ($dll in @("Assembly-CSharp.dll", "Assembly-CSharp-firstpass.dll")) {
             }
             if ($reads -eq 0) { continue }
 
-            # The transpilers cover INSTANCE methods on these types only (Home minus ShowOverlay,
-            # which is meant to read the local player). A static method has no receiver to rewrite
-            # the singleton into, so it is just as exposed as anything else and is deliberately not
-            # treated as covered.
+            # The transpilers cover INSTANCE methods only: all of Player and Building, and the
+            # component methods listed in Main.ComponentOwnerReferencePatch. A static method has no
+            # receiver to rewrite the singleton into, so it is just as exposed as anything else and
+            # is deliberately not treated as covered.
+            $componentMethods = @{
+                'Home'               = '*'
+                'Field'              = 'Tick', 'DeferredYield', 'RefreshBonuses'
+                'ProducerBasePlural' = 'DoYield', 'CheckProductionPipeline'
+            }
+            $inComponent = $componentMethods.ContainsKey($type.Name) -and
+                           (($componentMethods[$type.Name] -eq '*' -and $method.Name -ne 'ShowOverlay') -or
+                            ($componentMethods[$type.Name] -contains $method.Name))
             $coveredByTranspiler = (-not $method.IsStatic) -and
-                                   ($type.Name -eq 'Player' -or $type.Name -eq 'Building' -or
-                                    ($type.Name -eq 'Home' -and $method.Name -ne 'ShowOverlay'))
+                                   ($type.Name -eq 'Player' -or $type.Name -eq 'Building' -or $inComponent)
 
             $key = "$($type.Name).$($method.Name)"
 

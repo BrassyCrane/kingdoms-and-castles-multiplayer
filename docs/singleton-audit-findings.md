@@ -41,13 +41,15 @@ synced with `TaxRateMessage`. Still open: the static `Home.BuildGatherTypeOrder`
 kingdom's per-island stock, and `HomeSaveData.UnloadVillager` looks residents up on the local
 kingdom only.
 
-## Strong suspects, in the order I would read them
+**`Field.Tick`, `DeferredYield`, `RefreshBonuses`, `ProducerBasePlural.DoYield`,
+`CheckProductionPipeline`.** Farms counted the local player's windmills for their bonus, and farm
+and blacksmith output, crop rot and the "production blocked" advisor all went to the local kingdom.
+These methods are in the same transpiler table now. Left local on purpose: `Field.AddFieldInstances`,
+`RemoveFieldInstances` and `FieldSystem.Tick`, because the local player's field system is the only
+one that ticks and it draws every farm's wheat, and the irrigation subscriptions in `Field.OnInit` /
+`OnDestroy`.
 
-**`Field.Tick` (2), `Field.DeferredYield` (1), `Field.AddFieldInstances` (3), `FieldSystem.Tick`
-(1), `ProducerBasePlural.DoYield` (2), `ProducerBasePlural.CheckProductionPipeline` (2).**
-Production and harvest, crediting a kingdom. Given that a separate bug already stopped every farm
-in the game from harvesting at all, this whole cluster has never been observed working correctly
-for two kingdoms and should be treated as unverified rather than as suspect.
+## Strong suspects, in the order I would read them
 
 **`TownSquare.TrySettleAttractedPeople` (2), `TownSquare.Update` (2).** Immigration. A settler
 attracted to a peer's town square being settled into the local kingdom would look like "my
