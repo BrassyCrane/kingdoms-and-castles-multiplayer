@@ -8328,29 +8328,44 @@ namespace KaCMultiplayer
         }
 
         /// <summary>
-        /// Inside Home's instance methods, <c>Player.inst</c> means the kingdom that owns the house.
+        /// Inside some building components, <c>Player.inst</c> means the kingdom that owns the
+        /// building, not the local one.
         ///
-        /// Home is a component next to a Building, not a Building, so the rewrite above never
-        /// reached it (the same gap CalcMaxGold fell through). Every house in the world was taxed
-        /// at the local player's rate, logged its food into the local player's consumption, and
-        /// sent its residents to the local player's homeless list when torn down. Home keeps its
-        /// Building in the private field <c>b</c>, so load that and map it to the owner.
+        /// These are components next to a Building, not Buildings, so the rewrite above never
+        /// reached them (the same gap CalcMaxGold fell through). Before this, every house in the
+        /// world was taxed at the local player's rate and sent its residents to the local homeless
+        /// list, every farm counted the local player's windmills for its bonus, and a full
+        /// blacksmith in another kingdom set off the local player's advisor. Each of these types
+        /// keeps its Building in a field named <c>b</c>, so load that and map it to the owner.
         ///
-        /// ShowOverlay is left alone: it asks whether the house is on the LOCAL player's land, to
-        /// decide whether the local player's happiness overlay covers it, which is what vanilla means.
+        /// Left alone on purpose: Home.ShowOverlay (whether the LOCAL overlay covers the house) and
+        /// Field's wheat drawing (remote farms are drawn by the local player's field system, the
+        /// only one that ticks, since cloned players' Update is suppressed).
         /// </summary>
         [HarmonyPatch]
-        public class HomePlayerReferencePatch
+        public class ComponentOwnerReferencePatch
         {
+            /// <summary>Type to method names, or null for every instance method on it.</summary>
+            private static readonly Dictionary<Type, string[]> Targets = new Dictionary<Type, string[]>
+            {
+                { typeof(Home), null },
+                { typeof(Field), new[] { "Tick", "DeferredYield", "RefreshBonuses" } },
+                { typeof(ProducerBasePlural), new[] { "DoYield", "CheckProductionPipeline" } },
+            };
+
             static IEnumerable<MethodBase> TargetMethods()
             {
-                return SingletonRewrite.InstanceMethodsOf(typeof(Home), "Home owner transpiler")
-                    .Where(m => m.Name != "ShowOverlay");
+                foreach (var t in Targets)
+                    foreach (MethodBase m in SingletonRewrite.InstanceMethodsOf(t.Key, t.Key.Name + " owner transpiler"))
+                    {
+                        if (t.Value == null ? m.Name == "ShowOverlay" : !t.Value.Contains(m.Name)) continue;
+                        yield return m;
+                    }
             }
 
             static IEnumerable<CodeInstruction> Transpiler(MethodBase method, IEnumerable<CodeInstruction> instructions)
             {
-                FieldInfo building = AccessTools.Field(typeof(Home), "b");
+                FieldInfo building = AccessTools.Field(method.DeclaringType, "b");
                 MethodInfo ownerOf = typeof(Main).GetMethod("GetPlayerByBuilding", BindingFlags.Static | BindingFlags.Public);
 
                 return SingletonRewrite.Apply(method, instructions,
