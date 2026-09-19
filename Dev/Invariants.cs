@@ -81,6 +81,7 @@ namespace KaCMultiplayer.Dev
             IslandsAreStaffedByTheirOwner();
             SnapshotCommissionsABuilding();
             DragonIdsAreUnique();
+            TaxRatesReachTheirKingdom();
         }
 
         // ---- CLASS 1: A PER-LANDMASS ARRAY SIZED BEFORE THE MAP EXISTED -------------------
@@ -849,6 +850,51 @@ namespace KaCMultiplayer.Dev
             {
                 check("the dragon id check finished without throwing", false);
                 Main.LogEx("[SELFTEST] dragon ids", ex);
+            }
+        }
+
+        // ---- TAX ------------------------------------------------------------------------
+
+        /// <summary>
+        /// Another kingdom's tax rate lands on that kingdom, and only that kingdom.
+        ///
+        /// Rates live on each Player object and were never sent anywhere, so the host saved 0 for
+        /// every guest. Drives the real apply path with the peer as sender, then checks a bad rate
+        /// from the wire is refused. The peer's rate is put back afterwards so the save round trip
+        /// later in the run sees the session as it was.
+        /// </summary>
+        private static void TaxRatesReachTheirKingdom()
+        {
+            try
+            {
+                SessionPlayer peer = FindAnyPeer();
+                if (peer == null || peer.inst.PlayerLandmassOwner == null
+                    || peer.inst.PlayerLandmassOwner.ownedLandMasses.Count == 0)
+                {
+                    log("no peer kingdom with land, skipping the tax check");
+                    return;
+                }
+
+                int lm = peer.inst.PlayerLandmassOwner.ownedLandMasses.data[0];
+                float peerBefore = peer.inst.GetTaxRate(lm);
+                float localBefore = Player.inst.GetTaxRate(lm);
+
+                using (NetApply.Scope())
+                {
+                    NetRegistrations.ApplyTaxRate(new TaxRateMessage { Origin = peer.id, LandMass = lm, Rate = 1.5f });
+                    check("a peer's tax rate is set on the peer's kingdom", peer.inst.GetTaxRate(lm) == 1.5f);
+                    check("a peer's tax rate leaves the local kingdom alone", Player.inst.GetTaxRate(lm) == localBefore);
+
+                    NetRegistrations.ApplyTaxRate(new TaxRateMessage { Origin = peer.id, LandMass = lm, Rate = 99f });
+                    check("an out-of-range tax rate from the wire is refused", peer.inst.GetTaxRate(lm) == 1.5f);
+
+                    peer.inst.SetTaxRate(lm, peerBefore);
+                }
+            }
+            catch (Exception ex)
+            {
+                check("the tax rate check finished without throwing", false);
+                Main.LogEx("[SELFTEST] tax rates", ex);
             }
         }
 

@@ -12,7 +12,7 @@ Each entry says what you see, and what to do about it if there is a workaround.
 - **A guest's food can be reset to 0 after loading a save.** Keep an eye on your granaries right
   after a load.
 - **Tax rates for other players' kingdoms are not saved** and go back to 0 when a session is
-  loaded (reported, not yet confirmed in 0.14.0).
+  loaded. Fixed for the next version.
 - **A big save takes about a minute to send** to each player joining it. The loading bar is slow,
   not stuck.
 

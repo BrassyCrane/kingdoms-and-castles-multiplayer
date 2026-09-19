@@ -26,25 +26,22 @@ a symptom rather than by anyone looking. The list below is what looking produces
 
 ## Confirmed, fix these
 
-**`LandmassOwner.GetPayCosts` (2 reads).** The sibling of `CalcMaxGold`, on the same type, and the
-note that fix produced said in as many words that the rest of `LandmassOwner` was worth checking.
-Pay costs are what a merchant charges, so this is the other half of the merchant bug: capacity was
-computed from the wrong kingdom, and so is the price. Two methods on this type read the singleton
-and both are now accounted for.
-
 **`ResourceLineItemUI.ClampOrder` (2 reads).** Already known as the visible symptom of the gold
 bug, and confirmed here as an unclaimed read in its own right. Worth re-checking after the
 `CalcMaxGold` fix lands rather than fixing blind: it may simply become correct once the number it
 reads is right.
 
-## Strong suspects, in the order I would read them
+## Fixed since the first run
 
-**`Home.Deposit` (5 reads), `Home.Tick` (2), `Home.GetHappinessFromTax` (1).** Villagers depositing
-into homes, and tax. `Home` is a Building component, so the owner transpiler covers `Building`'s own
-methods but NOT `Home`'s, which is exactly the gap `CalcMaxGold` fell through. This is also the
-first thing to read about the community patch's known issue "tax rates are not saved for other
-players' kingdoms and return to 0": if tax is being read off the local kingdom, saving it correctly
-would not help.
+**`Home` (12 reads across 7 methods).** Tax, food consumption records and the homeless list all
+read the local kingdom for every house in the world. Home's instance methods now go through the
+owner transpiler, like Building's (ShowOverlay excepted, it is about the local player's overlay).
+Tax rates were also never sent to other machines, so the host saved 0 for every guest; they are now
+synced with `TaxRateMessage`. Still open: the static `Home.BuildGatherTypeOrder` reads the local
+kingdom's per-island stock, and `HomeSaveData.UnloadVillager` looks residents up on the local
+kingdom only.
+
+## Strong suspects, in the order I would read them
 
 **`Field.Tick` (2), `Field.DeferredYield` (1), `Field.AddFieldInstances` (3), `FieldSystem.Tick`
 (1), `ProducerBasePlural.DoYield` (2), `ProducerBasePlural.CheckProductionPipeline` (2).**
@@ -77,6 +74,10 @@ run across two real machines.
 synced, so a disband crediting the wrong kingdom would desync the pair.
 
 ## Deliberately ignored
+
+**`LandmassOwner.GetPayCosts` (2 reads).** Only reads `Player.defaultPayCost`, a serialized field on
+the Player prefab that every kingdom is cloned from, so every kingdom gets the same table. Per-kingdom
+prices are handled by `Trade/ExportPrices.cs`.
 
 **`DiplomacyUI` (87 reads across 39 methods) and `AIKingdom` (41 across 9).** By far the two largest
 groups, and both irrelevant: a multiplayer session has no AI kingdoms, the Hall of Diplomacy is

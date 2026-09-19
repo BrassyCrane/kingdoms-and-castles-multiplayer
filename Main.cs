@@ -6172,6 +6172,29 @@ namespace KaCMultiplayer
             }
         }
 
+        /// <summary>
+        /// Tells everyone when the local player changes a tax rate.
+        ///
+        /// The rate lives on the Player object, so without this every other machine kept its copy
+        /// of our kingdom at 0: our homes were taxed wrong there, and the host saved 0 for us.
+        /// Only the local player's own changes are sent; applying someone else's rate also runs
+        /// SetTaxRate, on their Player, and must not echo.
+        /// </summary>
+        [HarmonyPatch(typeof(Player), "SetTaxRate")]
+        public class PlayerSetTaxRateHook
+        {
+            public static void Postfix(Player __instance, int landMass, float taxRate)
+            {
+                if (!NetClient.client.IsConnected || __instance == null || __instance != Player.inst) return;
+                if (landMass < 0) return;
+                try
+                {
+                    KaCMultiplayer.Net.NetRouter.Send(new KaCMultiplayer.Net.Messages.TaxRateMessage { LandMass = landMass, Rate = taxRate });
+                }
+                catch (Exception e) { Main.helper.Log("[TAX] broadcast error: " + e.Message); }
+            }
+        }
+
 
 
         // Make a launch-spawned ship carry the SAME guid on every machine, so ship-targeted packets
@@ -8301,6 +8324,42 @@ namespace KaCMultiplayer
                         new CodeInstruction(OpCodes.Ldarg_0),
                         new CodeInstruction(OpCodes.Call, ownerOf),
                     }, "GetPlayerByBuilding");
+            }
+        }
+
+        /// <summary>
+        /// Inside Home's instance methods, <c>Player.inst</c> means the kingdom that owns the house.
+        ///
+        /// Home is a component next to a Building, not a Building, so the rewrite above never
+        /// reached it (the same gap CalcMaxGold fell through). Every house in the world was taxed
+        /// at the local player's rate, logged its food into the local player's consumption, and
+        /// sent its residents to the local player's homeless list when torn down. Home keeps its
+        /// Building in the private field <c>b</c>, so load that and map it to the owner.
+        ///
+        /// ShowOverlay is left alone: it asks whether the house is on the LOCAL player's land, to
+        /// decide whether the local player's happiness overlay covers it, which is what vanilla means.
+        /// </summary>
+        [HarmonyPatch]
+        public class HomePlayerReferencePatch
+        {
+            static IEnumerable<MethodBase> TargetMethods()
+            {
+                return SingletonRewrite.InstanceMethodsOf(typeof(Home), "Home owner transpiler")
+                    .Where(m => m.Name != "ShowOverlay");
+            }
+
+            static IEnumerable<CodeInstruction> Transpiler(MethodBase method, IEnumerable<CodeInstruction> instructions)
+            {
+                FieldInfo building = AccessTools.Field(typeof(Home), "b");
+                MethodInfo ownerOf = typeof(Main).GetMethod("GetPlayerByBuilding", BindingFlags.Static | BindingFlags.Public);
+
+                return SingletonRewrite.Apply(method, instructions,
+                    () => new[]
+                    {
+                        new CodeInstruction(OpCodes.Ldarg_0),
+                        new CodeInstruction(OpCodes.Ldfld, building),
+                        new CodeInstruction(OpCodes.Call, ownerOf),
+                    }, "GetPlayerByBuilding(b)");
             }
         }
 

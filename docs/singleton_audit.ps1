@@ -97,11 +97,13 @@ foreach ($dll in @("Assembly-CSharp.dll", "Assembly-CSharp-firstpass.dll")) {
             }
             if ($reads -eq 0) { continue }
 
-            # The two transpilers cover INSTANCE methods on these two types only. A static method
-            # on Player or Building has no receiver to rewrite the singleton into, so it is just as
-            # exposed as anything else and is deliberately not treated as covered.
+            # The transpilers cover INSTANCE methods on these types only (Home minus ShowOverlay,
+            # which is meant to read the local player). A static method has no receiver to rewrite
+            # the singleton into, so it is just as exposed as anything else and is deliberately not
+            # treated as covered.
             $coveredByTranspiler = (-not $method.IsStatic) -and
-                                   ($type.Name -eq 'Player' -or $type.Name -eq 'Building')
+                                   ($type.Name -eq 'Player' -or $type.Name -eq 'Building' -or
+                                    ($type.Name -eq 'Home' -and $method.Name -ne 'ShowOverlay'))
 
             $key = "$($type.Name).$($method.Name)"
 
