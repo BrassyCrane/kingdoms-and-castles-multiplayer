@@ -78,6 +78,19 @@ Upload it at <https://license.unity3d.com/manual>, download the `.ulf` it return
 That writes a real licence file, which 2019.4 reads without going near the Hub client, and the
 two-command pipeline below then works unattended.
 
+### Running Unity from the command line without batchmode (2026-09-19)
+
+Batchmode still cannot get a licence, but the normal editor started with `-executeMethod` and
+`-quit` can: it gets its licence through the Hub's licensing client like a Hub launch does, runs
+the method, and closes. Close any open editor on the project first.
+
+```bash
+"C:/Program Files/Unity/Hub/Editor/2019.4.40f1/Editor/Unity.exe" -projectPath "E:/Games/KCM" -executeMethod BuildBundles.GenerateTagAndBuild -quit -useHub -hubIPC -licensingIpc LicenseClient-<user> -logFile "E:/Games/KCM/Preview/build.log"
+```
+
+`<user>` is the Windows user name. `PreviewLoadingScreen.RegenerateAndRender` does the same for a
+look at the loading screen: it regenerates the prefabs and writes `E:/Games/KCM/Preview/loading.png`.
+
 ### The whole pipeline, two commands
 
 Added 2026-09-05. `BuildBundles.GenerateTagAndBuild` runs sprites, prefabs, bundle tags and the four

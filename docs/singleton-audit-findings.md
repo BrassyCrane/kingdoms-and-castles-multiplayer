@@ -51,13 +51,6 @@ one that ticks and it draws every farm's wheat, and the irrigation subscriptions
 
 ## Strong suspects, in the order I would read them
 
-**`TownSquare.TrySettleAttractedPeople` (2), `TownSquare.Update` (2).** Immigration. A settler
-attracted to a peer's town square being settled into the local kingdom would look like "my
-population keeps going up and I did not build anything".
-
-**`Villager.DropResources` (2), `Villager.TryEat` (1), `Villager.GetThought` (4).** Food
-consumption and carried goods. `GetThought` is cosmetic; the other two are not.
-
 **`DragonSpawn.SetWildAdultActions` (5), `SetWildBabyActions` (4), `OnSeasonChange` (8).** Dragon
 target selection, which the community patch found independently from the other end: its
 `DragonUpdateActions` suppression note says target selection reads `Player.inst`, so each copy was
@@ -80,6 +73,14 @@ synced, so a disband crediting the wrong kingdom would desync the pair.
 **`LandmassOwner.GetPayCosts` (2 reads).** Only reads `Player.defaultPayCost`, a serialized field on
 the Player prefab that every kingdom is cloned from, so every kingdom gets the same table. Per-kingdom
 prices are handled by `Trade/ExportPrices.cs`.
+
+**`TownSquare` (7 reads).** Festivals are never replayed on other machines, so these methods only
+ever run on the owner's machine, where the local player is the owner.
+
+**`Villager` (12 reads).** Cosmetic or session-wide: sounds, walk bounce, the keep as a fallback drop
+position, the creative-mode eating option, thought bubbles. `TeleportTo` adds a villager that
+changes island to the local homeless list, which only matters if a remote villager is teleported
+across islands.
 
 **`DiplomacyUI` (87 reads across 39 methods) and `AIKingdom` (41 across 9).** By far the two largest
 groups, and both irrelevant: a multiplayer session has no AI kingdoms, the Hall of Diplomacy is
