@@ -82,6 +82,7 @@ namespace KaCMultiplayer.Dev
             SnapshotCommissionsABuilding();
             DragonIdsAreUnique();
             TaxRatesReachTheirKingdom();
+            RosterKeepsKingdomObjects();
         }
 
         // ---- CLASS 1: A PER-LANDMASS ARRAY SIZED BEFORE THE MAP EXISTED -------------------
@@ -850,6 +851,54 @@ namespace KaCMultiplayer.Dev
             {
                 check("the dragon id check finished without throwing", false);
                 Main.LogEx("[SELFTEST] dragon ids", ex);
+            }
+        }
+
+        // ---- ROSTER ---------------------------------------------------------------------
+
+        /// <summary>
+        /// A roster message updates the player registry in place.
+        ///
+        /// It used to wipe the registry and build every remote player again, with a new, empty
+        /// Player object, so the kingdoms a guest had already unpacked lost their owner whenever
+        /// someone else joined. Sends the current roster back through the real handler and checks
+        /// every kingdom object survived, then that the ghost flag travels.
+        /// </summary>
+        private static void RosterKeepsKingdomObjects()
+        {
+            try
+            {
+                SessionPlayer peer = FindAnyPeer();
+                if (peer == null) { log("no peer kingdom, skipping the roster check"); return; }
+
+                Dictionary<string, Player> before = new Dictionary<string, Player>();
+                foreach (var kv in Main.kCPlayers) before[kv.Key] = kv.Value.inst;
+
+                PeerRosterMessage roster = new PeerRosterMessage();
+                foreach (SessionPlayer p in Main.kCPlayers.Values)
+                    roster.Players.Add(new PeerRosterMessage.Entry
+                    {
+                        ClientId = p.id, SteamId = p.steamId, Name = p.name, KingdomName = p.kingdomName,
+                        Banner = p.banner, Ready = p.ready, Ghost = p == peer,
+                        TeamId = p.inst.PlayerLandmassOwner.teamId
+                    });
+
+                using (NetApply.Scope())
+                    NetRegistrations.ApplyRoster(roster);
+
+                bool same = before.Count == Main.kCPlayers.Count;
+                foreach (var kv in before)
+                    same &= Main.kCPlayers.ContainsKey(kv.Key) && Main.kCPlayers[kv.Key].inst == kv.Value;
+
+                check("a roster keeps every kingdom's Player object", same);
+                check("a roster marks a player who is not connected as a ghost", peer.isGhost);
+
+                peer.isGhost = false;
+            }
+            catch (Exception ex)
+            {
+                check("the roster check finished without throwing", false);
+                Main.LogEx("[SELFTEST] roster", ex);
             }
         }
 

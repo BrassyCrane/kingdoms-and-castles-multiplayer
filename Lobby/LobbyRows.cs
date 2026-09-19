@@ -14,23 +14,24 @@ namespace KaCMultiplayer.Lobby
     /// </summary>
     internal static class LobbyRowVisuals
     {
-        /// <summary>
-        /// Banner texture for a player, or null if it can't be resolved yet.
-        ///
-        /// Two guards matter here. A player can disconnect between refreshes, so the lookup
-        /// must not index straight into the registries, a row polling four times a second will
-        /// hit that. And a player whose banner has not been chosen yet holds -1, so the livery
-        /// set has to be bounds-checked before it is indexed.
-        /// </summary>
+        /// <summary>Banner texture for a player, or null if it cannot be resolved yet.</summary>
         public static Texture Resolve(ushort clientId, out SessionPlayer player)
         {
             player = NetPlayers.ById(clientId);
+            return BannerOf(player);
+        }
+
+        /// <summary>
+        /// A player whose banner has not been chosen yet holds -1, so the livery set has to be
+        /// bounds-checked before it is indexed. liverySets is a List, not an array.
+        /// </summary>
+        public static Texture BannerOf(SessionPlayer player)
+        {
             if (player == null) return null;
 
             var sets = World.inst == null ? null : World.inst.liverySets;
             if (sets == null) return null;
 
-            // liverySets is a List, not an array, Count, not Length.
             int idx = player.banner;
             if (idx < 0 || idx >= sets.Count) return null;
 
@@ -39,7 +40,11 @@ namespace KaCMultiplayer.Lobby
     }
 
     /// <summary>
-    /// One row in the lobby's player list: name, banner, ready tick.
+    /// One row in the lobby's player list: banner, two lines of text, ready tick.
+    ///
+    /// A new game lists players, with the kingdom they have named underneath. A saved game lists
+    /// the save's kingdoms, with who plays each underneath, and a kingdom whose player has not
+    /// joined yet is dimmed and says so.
     ///
     /// Refreshes on a timer because there is no change notification for the underlying player
     /// record, readiness and banner are mutated directly by message handlers.
@@ -47,20 +52,20 @@ namespace KaCMultiplayer.Lobby
     public class PlayerRow : MonoBehaviour
     {
         /// <summary>Which player this row is for.</summary>
-        public ushort Client { get; set; }
+        public string SteamId { get; set; }
 
         private const float RefreshSeconds = 0.25f;
+        private const float GhostAlpha = 0.5f;
 
         private RawImage bannerImage;
         private TextMeshProUGUI nameLabel;
+        private TextMeshProUGUI detailLabel;
         private GameObject readyMark;
+        private CanvasGroup fade;
 
         private void Start()
         {
-            // Bind before the first refresh, not after. Refreshing first dereferences a banner
-            // field that has not been assigned yet, which throws on the very first tick of every
-            // row. Harmless in effect, the next tick 250ms later works, but it fills the log
-            // with exceptions and buries the real ones.
+            // Bind before the first refresh, not after, or the first tick of every row throws.
             Bind();
 
             if (bannerImage != null)
@@ -68,10 +73,17 @@ namespace KaCMultiplayer.Lobby
                 Button pick = bannerImage.GetComponent<Button>();
                 if (pick != null)
                 {
-                    // Clicking your own banner reopens the name-and-banner screen.
-                    pick.onClick.AddListener(() => Main.TransitionTo(MenuState.NameAndBanner));
+                    // Clicking your own banner reopens the name-and-banner screen. Not in a saved
+                    // game, where the kingdom and its banner come from the save.
+                    pick.onClick.AddListener(() =>
+                    {
+                        if (SteamId == Main.PlayerSteamID && !LobbySettings.Current.SavedGame)
+                            Main.TransitionTo(MenuState.NameAndBanner);
+                    });
                 }
             }
+
+            fade = gameObject.GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
 
             Refresh();
             InvokeRepeating(nameof(Refresh), RefreshSeconds, RefreshSeconds);
@@ -86,6 +98,9 @@ namespace KaCMultiplayer.Lobby
 
                 Transform nameNode = transform.Find("PlayerName");
                 if (nameNode != null) nameLabel = nameNode.GetComponent<TextMeshProUGUI>();
+
+                Transform detailNode = transform.Find("Detail");
+                if (detailNode != null) detailLabel = detailNode.GetComponent<TextMeshProUGUI>();
 
                 Transform readyNode = transform.Find("Ready");
                 if (readyNode != null) readyMark = readyNode.gameObject;
@@ -102,23 +117,39 @@ namespace KaCMultiplayer.Lobby
             try
             {
                 SessionPlayer player;
-                Texture banner = LobbyRowVisuals.Resolve(Client, out player);
-
-                // The player has gone, stop polling rather than logging every 250ms until
-                // the row is destroyed.
-                if (player == null)
+                if (SteamId == null || !Main.kCPlayers.TryGetValue(SteamId, out player))
                 {
+                    // Gone; LobbyView.SyncRows removes the row. Stop polling until then.
                     CancelInvoke(nameof(Refresh));
                     return;
                 }
 
-                if (nameLabel != null) nameLabel.text = player.name;
-                if (readyMark != null) readyMark.SetActive(player.ready);
+                string who = string.IsNullOrEmpty(player.name) ? player.SteamPersona() : player.name;
+                string kingdom = string.IsNullOrWhiteSpace(player.kingdomName) ? null : player.kingdomName.Trim();
+
+                string top, bottom;
+                if (LobbySettings.Current.SavedGame)
+                {
+                    top = kingdom ?? who;
+                    bottom = player.isGhost ? "Not joined: " + who : who;
+                }
+                else
+                {
+                    top = who;
+                    bottom = kingdom ?? "No kingdom named yet";
+                }
+
+                if (nameLabel != null) nameLabel.text = top;
+                if (detailLabel != null) detailLabel.text = bottom;
+                if (readyMark != null) readyMark.SetActive(player.ready && !player.isGhost);
+                if (fade != null) fade.alpha = player.isGhost ? GhostAlpha : 1f;
+
+                Texture banner = LobbyRowVisuals.BannerOf(player);
                 if (banner != null && bannerImage != null) bannerImage.texture = banner;
             }
             catch (Exception ex)
             {
-                NetLog.Error("refreshing player row for client " + Client, ex);
+                NetLog.Error("refreshing player row for " + SteamId, ex);
                 CancelInvoke(nameof(Refresh));
             }
         }

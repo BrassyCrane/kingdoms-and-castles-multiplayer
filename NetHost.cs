@@ -143,7 +143,10 @@ namespace KaCMultiplayer
                         Main.helper.Log($"[DISCONNECT] {leavingName} left mid-game, keeping their kingdom as a ghost (record preserved for consistency/reconnect).");
                     }
 
-                    LobbyView.RemovePlayer(ev.Client.Id);
+                    // Guests are told too, or their lists keep showing the player as here.
+                    // A leaver who owns a kingdom stays listed as a ghost.
+                    LobbyView.SyncRows();
+                    KaCMultiplayer.Net.SessionHandlers.BroadcastRoster();
 
                     // Losing a player mid-game pauses everyone. Their kingdom stops ticking the moment
                     // they go (it sits as a ghost, see above), so an unpaused world just keeps running

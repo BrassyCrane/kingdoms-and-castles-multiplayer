@@ -21,41 +21,71 @@ namespace KaCMultiplayer.Lobby
         private static readonly List<GameObject> playerRows = new List<GameObject>();
         private static readonly List<GameObject> chatRows = new List<GameObject>();
 
-        /// <summary>Player rows currently on screen. Read by the disconnect handler.</summary>
-        public static IList<GameObject> PlayerRows { get { return playerRows; } }
-
         // ---- player list ------------------------------------------------------
 
         /// <summary>
-        /// Adds a row for a player. The row script reads everything else it needs from the
-        /// player registry using this id, so only the id is passed in.
+        /// Adds a row for a connected player. Rows are keyed by Steam id rather than client id,
+        /// because a saved kingdom whose player has not joined has no client id of its own, and
+        /// when that player does join, their row should stay the same row.
         /// </summary>
         public static void AddPlayer(ushort clientId)
         {
+            string steamId;
+            if (Main.clientSteamIds.TryGetValue(clientId, out steamId)) AddRow(steamId);
+            else
+            {
+                SessionPlayer p = NetPlayers.ById(clientId);
+                if (p != null) AddRow(p.steamId);
+            }
+        }
+
+        /// <summary>
+        /// Makes the list match the player registry: a row for everyone in it, including saved
+        /// kingdoms nobody has joined as yet, and no row for anyone who has gone. Cheap enough to
+        /// run every second, and it means no join, leave or roster path can leave the list stale.
+        /// </summary>
+        public static void SyncRows()
+        {
             try
             {
-                // Idempotent. A join is applied twice on the host, once synchronously so the
-                // roster it broadcasts includes the joiner, then again when its own local client
-                // receives the relayed echo, and a roster message can also re-add a player who
-                // is already listed. Without this guard each of those produces a duplicate row.
-                if (HasRow(clientId)) return;
+                if (LobbyScreen.RosterContent == null) return;
+
+                foreach (string steamId in Main.kCPlayers.Keys)
+                    AddRow(steamId);
+
+                for (int i = playerRows.Count - 1; i >= 0; i--)
+                {
+                    PlayerRow script = playerRows[i] == null ? null : playerRows[i].GetComponent<PlayerRow>();
+                    if (script != null && Main.kCPlayers.ContainsKey(script.SteamId)) continue;
+
+                    if (playerRows[i] != null) UnityEngine.Object.Destroy(playerRows[i]);
+                    playerRows.RemoveAt(i);
+                }
+            }
+            catch (Exception ex) { NetLog.Error("syncing lobby player rows", ex); }
+        }
+
+        private static void AddRow(string steamId)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(steamId) || HasRow(steamId)) return;
 
                 GameObject row = UnityEngine.Object.Instantiate(
                     LobbyPrefabs.PlayerEntry, LobbyScreen.RosterContent);
                 row.SetActive(true);
 
                 PlayerRow script = row.AddComponent<PlayerRow>();
-                script.Client = clientId;
+                script.SteamId = steamId;
 
                 playerRows.Add(row);
             }
-            catch (Exception ex) { NetLog.Error("adding lobby player row for client " + clientId, ex); }
+            catch (Exception ex) { NetLog.Error("adding lobby player row for " + steamId, ex); }
         }
 
         /// <summary>
         /// Clears the player list. On a client this also empties the player registry, because
-        /// the host's next roster message is the authority and stale entries would survive it.
-        /// The host keeps its registry, it *is* the authority.
+        /// the next lobby starts from nothing. The host keeps its registry, it *is* the authority.
         /// </summary>
         public static void ClearPlayers()
         {
@@ -69,34 +99,14 @@ namespace KaCMultiplayer.Lobby
             catch (Exception ex) { NetLog.Error("clearing the lobby player list", ex); }
         }
 
-        /// <summary>True if this client already has a row on screen.</summary>
-        public static bool HasRow(ushort clientId)
+        private static bool HasRow(string steamId)
         {
             for (int i = 0; i < playerRows.Count; i++)
             {
                 if (playerRows[i] == null) continue;
                 PlayerRow script = playerRows[i].GetComponent<PlayerRow>();
-                if (script != null && script.Client == clientId) return true;
+                if (script != null && script.SteamId == steamId) return true;
             }
-            return false;
-        }
-
-        /// <summary>Removes the row belonging to one player, if it is present.</summary>
-        public static bool RemovePlayer(ushort clientId)
-        {
-            try
-            {
-                for (int i = 0; i < playerRows.Count; i++)
-                {
-                    PlayerRow script = playerRows[i].GetComponent<PlayerRow>();
-                    if (script == null || script.Client != clientId) continue;
-
-                    UnityEngine.Object.Destroy(playerRows[i]);
-                    playerRows.RemoveAt(i);
-                    return true;
-                }
-            }
-            catch (Exception ex) { NetLog.Error("removing lobby player row for client " + clientId, ex); }
             return false;
         }
 

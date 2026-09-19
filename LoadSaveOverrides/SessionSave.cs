@@ -343,6 +343,9 @@ namespace KaCMultiplayer.LoadSaveOverrides
                 if (!string.IsNullOrWhiteSpace(finalName))
                     TownNameUI.inst.SetTownNameQuiet(finalName);
 
+                // The lobby's map preview still shows the world from before the load.
+                LobbyScreen.mapPreviewDirty = true;
+
                 return result;
             }
             finally

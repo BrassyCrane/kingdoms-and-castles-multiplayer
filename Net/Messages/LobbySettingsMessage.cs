@@ -25,6 +25,9 @@ namespace KaCMultiplayer.Net.Messages
         public int WorldRivers;
         public int PlacementType;
         public bool FogOfWar;
+        public bool SavedGame;
+        public int SavedYear;
+        public int SavedKingdoms;
 
         public void Serialize(Message m)
         {
@@ -39,6 +42,9 @@ namespace KaCMultiplayer.Net.Messages
             m.AddInt(WorldRivers);
             m.AddInt(PlacementType);
             m.AddBool(FogOfWar);
+            m.AddBool(SavedGame);
+            m.AddInt(SavedYear);
+            m.AddInt(SavedKingdoms);
         }
 
         public void Deserialize(Message m)
@@ -54,6 +60,9 @@ namespace KaCMultiplayer.Net.Messages
             WorldRivers = m.GetInt();
             PlacementType = m.GetInt();
             FogOfWar = m.GetBool();
+            SavedGame = m.GetBool();
+            SavedYear = m.GetInt();
+            SavedKingdoms = m.GetInt();
         }
 
         /// <summary>
@@ -74,7 +83,10 @@ namespace KaCMultiplayer.Net.Messages
                 WorldType = (int)s.WorldType,
                 WorldRivers = (int)s.WorldRivers,
                 PlacementType = s.PlacementType,
-                FogOfWar = s.FogOfWar
+                FogOfWar = s.FogOfWar,
+                SavedGame = s.SavedGame,
+                SavedYear = s.SavedYear,
+                SavedKingdoms = s.SavedKingdoms
             };
         }
 
@@ -92,6 +104,9 @@ namespace KaCMultiplayer.Net.Messages
             s.WorldRivers = (World.MapRiverLakes)WorldRivers;
             s.PlacementType = PlacementType;
             s.FogOfWar = FogOfWar;
+            s.SavedGame = SavedGame;
+            s.SavedYear = SavedYear;
+            s.SavedKingdoms = SavedKingdoms;
         }
     }
 }
