@@ -39,6 +39,12 @@ namespace KaCMultiplayer.Net.Messages
             /// The host's answer is the one that counts. 0 means "not assigned yet".
             /// </summary>
             public int TeamId;
+
+            /// <summary>
+            /// A kingdom from the loaded save whose player is not connected. Shown in the lobby as
+            /// "not joined yet" and never counted for Start.
+            /// </summary>
+            public bool Ghost;
         }
 
         public void Serialize(Message m)
@@ -56,6 +62,7 @@ namespace KaCMultiplayer.Net.Messages
                 m.AddInt(e.Banner);
                 m.AddBool(e.Ready);
                 m.AddInt(e.TeamId);
+                m.AddBool(e.Ghost);
             }
         }
 
@@ -74,6 +81,7 @@ namespace KaCMultiplayer.Net.Messages
                 e.Banner = m.GetInt();
                 e.Ready = m.GetBool();
                 e.TeamId = m.GetInt();
+                e.Ghost = m.GetBool();
                 Players.Add(e);
             }
         }

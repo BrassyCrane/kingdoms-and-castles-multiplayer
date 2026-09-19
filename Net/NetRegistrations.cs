@@ -2139,17 +2139,23 @@ namespace KaCMultiplayer.Net
         /// exist locally, so blindly adding would throw on a duplicate key. Update what is
         /// there, create only what is genuinely new.
         /// </summary>
-        private static void ApplyRoster(PeerRosterMessage m)
+        internal static void ApplyRoster(PeerRosterMessage m)
         {
             NetLog.Info("roster: " + (m.Players == null ? 0 : m.Players.Count) + " players");
-
-            LobbyView.ClearPlayers();
             if (m.Players == null) return;
+
+            // Updated in place, never wiped and rebuilt. A remote entry's Player object holds that
+            // kingdom once a save is unpacked, and a rebuilt entry gets a new, empty one: after a
+            // third player joined a loaded game, the kingdoms already on this machine lost their
+            // owner. Entries the host no longer lists are dropped at the end.
+            HashSet<string> listed = new HashSet<string>();
 
             int failed = 0;
 
             foreach (PeerRosterMessage.Entry e in m.Players)
             {
+                if (!string.IsNullOrEmpty(e.SteamId)) listed.Add(e.SteamId);
+
                 // Guarded PER ENTRY, because the whole roster used to ride on every entry
                 // succeeding. This handler has thrown before, on a half-built remote player, and the
                 // throw did not merely lose that one player: it abandoned the loop, so everybody
@@ -2172,6 +2178,7 @@ namespace KaCMultiplayer.Net
                         existing.ready = e.Ready;
                         existing.banner = e.Banner;
                         existing.kingdomName = e.KingdomName;
+                        if (e.SteamId != Main.PlayerSteamID) existing.isGhost = e.Ghost;
                     }
                     else
                     {
@@ -2180,11 +2187,14 @@ namespace KaCMultiplayer.Net
                             name = e.Name,
                             ready = e.Ready,
                             banner = e.Banner,
-                            kingdomName = e.KingdomName
+                            kingdomName = e.KingdomName,
+                            isGhost = e.Ghost
                         });
                     }
 
-                    Main.clientSteamIds[e.ClientId] = e.SteamId;
+                    // A ghost has no connection, and its placeholder client id is shared by every
+                    // ghost, so it must not claim that id.
+                    if (!e.Ghost) Main.clientSteamIds[e.ClientId] = e.SteamId;
 
                     // A player whose kingdom object is not built yet still belongs in the roster and
                     // on the lobby list; only their banner has to wait. Chaining straight through
@@ -2202,7 +2212,6 @@ namespace KaCMultiplayer.Net
                     else
                         NetLog.Info("roster: " + e.Name + " has no kingdom yet; banner deferred");
 
-                    LobbyView.AddPlayer(e.ClientId);
                 }
                 catch (Exception ex)
                 {
@@ -2214,6 +2223,16 @@ namespace KaCMultiplayer.Net
             if (failed > 0)
                 NetLog.Warn("roster: " + failed + " of " + m.Players.Count +
                             " entries could not be applied; the rest of the lobby is intact");
+
+            foreach (string gone in Main.kCPlayers.Keys.Where(k => !listed.Contains(k) && k != Main.PlayerSteamID).ToList())
+            {
+                SessionPlayer left = Main.kCPlayers[gone];
+                Main.kCPlayers.Remove(gone);
+                if (Main.clientSteamIds.ContainsKey(left.id) && Main.clientSteamIds[left.id] == gone)
+                    Main.clientSteamIds.Remove(left.id);
+            }
+
+            LobbyView.SyncRows();
         }
 
         /// <summary>

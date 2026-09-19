@@ -18,6 +18,14 @@ namespace KaCMultiplayer
         public static ServerRow serverDetails { get; set; }
 
         public static Transform RosterContent { get; set; }
+
+        // The saved-game layout: SaveInfo replaces the world settings and difficulty, and the
+        // headings change. Null when the bundle predates it, which leaves the lobby as it was.
+        private GameObject savedInfo, worldGroup, difficultyNode, difficultyCaption;
+        private TextMeshProUGUI titleLabel, playersHeader, worldHeader;
+        private TextMeshProUGUI infoYear, infoDifficulty, infoSize, infoKingdoms;
+        private string titleDefault, playersDefault, worldDefault;
+        private bool? layoutSaved;
         public static Transform ChatContent { get; set; }
 
         public static Button StartButton { get; set; }
@@ -247,6 +255,8 @@ namespace KaCMultiplayer
                 ProgressLabel = BindInChildren<TextMeshProUGUI>("LoadingSave/Window/ProgressBar");
                 StatusLabel = Bind<TextMeshProUGUI>("LoadingSave/Window/StatusText");
 
+                BindSavedGameLayout();
+
                 if (!NetHost.IsRunning)
                 {
                     // Guests can look but not touch: the host owns every setting, and anything
@@ -356,6 +366,82 @@ namespace KaCMultiplayer
         }
 
         /// <summary>
+        /// Finds the saved-game layout's nodes. Missing nodes mean an older bundle, which simply
+        /// keeps the normal layout, so nothing here is allowed to throw out of Awake.
+        /// </summary>
+        private void BindSavedGameLayout()
+        {
+            try
+            {
+                const string settings = "Container/ServerSettings/";
+                Transform info = transform.Find(settings + "SaveInfo");
+                if (info == null) return;
+
+                savedInfo = info.gameObject;
+                worldGroup = Node(settings + "WorldSettings").gameObject;
+                difficultyNode = Node(settings + "Difficulty").gameObject;
+                difficultyCaption = Node(settings + "Caption_Difficulty").gameObject;
+
+                titleLabel = Bind<TextMeshProUGUI>("Container/Title");
+                playersHeader = Bind<TextMeshProUGUI>("Container/Header_Players");
+                worldHeader = Bind<TextMeshProUGUI>("Container/Header_World");
+                titleDefault = titleLabel.text;
+                playersDefault = playersHeader.text;
+                worldDefault = worldHeader.text;
+
+                infoYear = Bind<TextMeshProUGUI>(settings + "SaveInfo/InfoYear");
+                infoDifficulty = Bind<TextMeshProUGUI>(settings + "SaveInfo/InfoDifficulty");
+                infoSize = Bind<TextMeshProUGUI>(settings + "SaveInfo/InfoSize");
+                infoKingdoms = Bind<TextMeshProUGUI>(settings + "SaveInfo/InfoKingdoms");
+                layoutSaved = null;
+            }
+            catch (Exception ex)
+            {
+                savedInfo = null;
+                Main.LogEx("binding the saved-game lobby layout", ex);
+            }
+        }
+
+        /// <summary>
+        /// Shows the saved-game layout while the host is loading a save: nothing about the world
+        /// can be changed then, so the world settings give way to what the save holds, and the
+        /// player list becomes the save's kingdoms (see PlayerRow). Runs every settings tick, on
+        /// the host and on guests, from LobbySettings.SavedGame.
+        /// </summary>
+        private void ApplySavedGameLayout(LobbySettings s)
+        {
+            if (savedInfo == null) return;
+            bool saved = s.SavedGame;
+
+            if (layoutSaved != saved)
+            {
+                layoutSaved = saved;
+                savedInfo.SetActive(saved);
+                worldGroup.SetActive(!saved);
+                difficultyNode.SetActive(!saved);
+                difficultyCaption.SetActive(!saved);
+                titleLabel.text = saved ? "Saved Game Lobby" : titleDefault;
+                playersHeader.text = saved ? "Kingdoms" : playersDefault;
+                worldHeader.text = saved ? "Saved World" : worldDefault;
+            }
+
+            if (!saved) return;
+
+            const string notYet = "...";
+            infoYear.text = s.SavedYear > 0 ? s.SavedYear.ToString() : notYet;
+            infoDifficulty.text = s.SavedYear > 0 ? KaCMultiplayer.Lobby.GameDifficultyExtensions.Label(s.Difficulty) : notYet;
+
+            int size = (int)s.WorldSize;
+            infoSize.text = (s.SavedYear > 0 && size >= 0 && size < SizePicker.options.Count)
+                ? SizePicker.options[size].text : notYet;
+
+            int ghosts = Main.kCPlayers.Values.Count(p => p.isGhost);
+            infoKingdoms.text = s.SavedKingdoms > 0
+                ? Math.Max(0, s.SavedKingdoms - ghosts) + " of " + s.SavedKingdoms
+                : notYet;
+        }
+
+        /// <summary>
         /// Makes controls inert, greyed out and unresponsive, but still readable.
         ///
         /// Both flags are needed. <c>interactable</c> alone leaves a Selectable able to take
@@ -434,6 +520,9 @@ namespace KaCMultiplayer
                     ReadSettingsFromControls();
                 else
                     ShowSettingsFromHost();
+
+                ApplySavedGameLayout(LobbySettings.Current);
+                KaCMultiplayer.Lobby.LobbyView.SyncRows();
 
                 // Rebuild the map preview after a (re)generation, once the lobby UI exists.
                 if (mapPreviewDirty && BrowserScreen.serverLobbyRef != null)
@@ -548,6 +637,11 @@ namespace KaCMultiplayer
             StartButton.interactable = Main.kCPlayers.Values
                 .Skip(1).Where(p => !p.isGhost).All(p => p.ready);
             RerollButton.interactable = canEditWorld;
+
+            s.SavedGame = !canEditWorld;
+            bool saveRead = s.SavedGame && KaCMultiplayer.LoadSaveOverrides.LoadIdentity.IsLoadedSession;
+            s.SavedYear = (saveRead && Player.inst != null) ? Player.inst.CurrYear : 0;
+            s.SavedKingdoms = saveRead ? KaCMultiplayer.LoadSaveOverrides.LoadIdentity.SavedKingdomCount : 0;
 
             if (Main.kCPlayers.Count > 0)
                 NetRouter.Broadcast(LobbySettingsMessage.From(s), NetClient.client.Id);
