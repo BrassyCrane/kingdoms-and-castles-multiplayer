@@ -14,7 +14,8 @@ This repository is the source of that Workshop item. It is still in beta.
 The current list of known problems, with workarounds where there is one, is in
 [KNOWN_ISSUES.md](KNOWN_ISSUES.md). Please check it before reporting.
 
-What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md), and what we plan to do next is in
+[TODO.md](TODO.md).
 
 ## Reporting a bug
 

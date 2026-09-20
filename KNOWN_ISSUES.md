@@ -1,38 +1,27 @@
 # Known issues
 
-Problems we know about in the current version, **0.14.0**. If you run into one of these, a report is
+Problems we know about in the current version, **0.15.0**. If you run into one of these, a report is
 still useful, especially with your Player.log attached (see the [README](README.md#reporting-a-bug)
 for where to find it). Anything not on this list, please report.
 
 Each entry says what you see, and what to do about it if there is a workaround.
 
+## Building
+
+- **After rejoining a game, builders can forget to finish what they were building.** Workaround:
+  delete the unfinished site and place it again. Reported on 0.15.0.
+
 ## Loading a saved game
 
-- **A guest's kingdom log shows Year 1 after loading a save**, instead of the save's actual year.
-- **A guest's food can be reset to 0 after loading a save.** Keep an eye on your granaries right
-  after a load.
-- **Tax rates for other players' kingdoms are not saved** and go back to 0 when a session is
-  loaded. Fixed for the next version.
 - **A big save takes about a minute to send** to each player joining it. The loading bar is slow,
   not stuck.
-- **A guest's kingdom could come back wrong after a reload**: resources gone, villagers stuck
-  homeless for good, and new settlers pouring in to fill the houses they left. The host was saving
-  its own view of everyone else's kingdom. Each player's own copy is now what gets saved, and a
-  loaded game repairs houses and homeless lists it finds in disagreement. Fixed for the next
-  version.
 
 ## The map
-
-- **Host and guest can end up on different maps** if the world Size or Rivers setting is changed in
-  the lobby. Workaround: after changing either setting, press **New World** before starting.
-  Fixed for the next version.
-
-## World and units
 
 - **Witch huts are switched off** in multiplayer.
 - **Army positions are corrected in batches**, so a fast chase can briefly look different on each
   screen.
-- **Longboats can look wrong on a guest's screen** (reported).
+- **Longboats can look wrong on a guest's screen.**
 - **An error in the raid system is caught** so it can no longer freeze the game clock, but what
   causes it is not known yet. A year may pass without a raid when it happens.
 
@@ -40,7 +29,25 @@ Each entry says what you see, and what to do about it if there is a workaround.
 
 - **The Hall of Diplomacy is disabled in multiplayer**, because the game only opens it when AI
   kingdoms exist. Use **Ctrl + Shift + D** instead.
+- **Merchants only visit their own kingdom's docks.** A merchant heading for another player's port
+  is removed, so merchant traffic between kingdoms does not happen yet.
+
+## What other players see of your kingdom
+
+These are not synced yet, so the other machines hold their own guess until something corrects it:
+
+- **What is inside your granaries and stores.**
+- **How hungry or healthy your villagers are.**
+- **Which job each of your villagers is doing.**
+- **How far along your building sites are.**
 
 ## Lobby
 
 - **The server browser does not list games.** Join through a Steam invite instead.
+
+## Fixed in 0.15.0
+
+Listed here because they were on this page for a while: a guest's kingdom log showing Year 1 after a
+load, a guest's food resetting to 0, tax rates going back to 0 when a session was loaded, a guest's
+kingdom coming back with its resources gone and its villagers homeless, and host and guest ending up
+on different maps after the Size or Rivers setting was changed.

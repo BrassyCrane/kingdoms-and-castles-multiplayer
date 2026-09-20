@@ -51,6 +51,3 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
   SiegeCatapult, DragonSpawn, and the static `Home.BuildGatherTypeOrder` and
   `HomeSaveData.UnloadVillager`. Each one is state the game keeps once and multiplayer needs per
   kingdom.
-- **Refresh `KNOWN_ISSUES.md` for 0.15.0.** It still describes 0.14.0 and lists things that are now
-  fixed: the guest's Year 1 and food reset, tax rates not saving, and the map mismatch when Size or
-  Rivers changed.
