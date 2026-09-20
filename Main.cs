@@ -830,6 +830,15 @@ namespace KaCMultiplayer
             // landmass and does nothing at all once the wiring is right.
             if (FixedUpdateInterval % 60 == 0) AliasJobTablesToOwners();
 
+            // A backstop for the kingdom copies the host saves. They are normally refreshed right
+            // after each save, which is every season; this covers a session that somehow never
+            // autosaves, so the copies can never go stale without limit. See Net/KingdomMirror.cs.
+            if (FixedUpdateInterval % 12000 == 0) KaCMultiplayer.Net.KingdomMirror.RequestFromEveryone();
+
+            // Guest side: send ours once, soon after the world is up, so an early save or a quick
+            // departure is still recorded from our own kingdom rather than from the host's view.
+            if (FixedUpdateInterval % 600 == 0) KaCMultiplayer.Net.KingdomMirror.EnsureFirstCopy();
+
             // Keep streamer effects the same on every machine. Silent, and free, unless somebody
             // is actually running them. See Net/StreamerEffectSync.cs.
             KaCMultiplayer.Net.StreamerEffectSync.Tick();
@@ -989,6 +998,10 @@ namespace KaCMultiplayer
             // and FixedUpdate does not run while it is. Paced off unscaled time inside, so the rate
             // on the wire is the same as it was on the fixed tick.
             SaveTransfer.PumpOutgoing();
+
+            // A guest's own kingdom on its way to the host, paced the same way and for the same
+            // reason. See Net/KingdomMirror.cs.
+            KaCMultiplayer.Net.KingdomMirror.Pump();
 
             // The other half of the same job, on the receiving side: notice when the world has
             // stopped arriving and ask for what is missing. See SaveTransfer.CheckForStall.

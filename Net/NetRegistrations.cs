@@ -273,6 +273,15 @@ namespace KaCMultiplayer.Net
             NetRegistry.OnClient<EconomySnapshotMessage>(NetMessageId.EconomySnapshot,
                 (m, ctx) => ApplyEconomySnapshot(m));
 
+            // A kingdom copy only ever travels upward, and a request only downward.
+            NetRegistry.Register<KingdomMirrorMessage>(NetMessageId.KingdomMirror);
+            NetRegistry.OnServer<KingdomMirrorMessage>(NetMessageId.KingdomMirror,
+                (m, ctx) => KingdomMirror.Receive(m));
+
+            NetRegistry.Register<KingdomMirrorRequestMessage>(NetMessageId.KingdomMirrorRequest);
+            NetRegistry.OnClient<KingdomMirrorRequestMessage>(NetMessageId.KingdomMirrorRequest,
+                (m, ctx) => KingdomMirror.SendOurs());
+
             NetRegistry.Register<TaxRateMessage>(NetMessageId.TaxRate);
             NetRegistry.OnServer<TaxRateMessage>(NetMessageId.TaxRate,
                 (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) ApplyTaxRate(m); });
@@ -1848,13 +1857,42 @@ namespace KaCMultiplayer.Net
                     Villager target = FindVillagerByGuid(m.Villager);
                     if (target == null) return;
 
-                    Player.inst.DestroyPerson(target, m.LeaveBody);
+                    // The DEAD VILLAGER'S OWN KINGDOM has to do this, not the local one.
+                    //
+                    // DestroyPerson takes the villager off the kingdom it is called on: its worker
+                    // list, its homeless list, its jobs. Called on the local player for somebody
+                    // else's villager, it tidies the wrong kingdom and leaves the dead villager on
+                    // the owner's lists for the rest of the session. Their homelessness penalty
+                    // then counts a corpse, and the host writes that into the save, which is one
+                    // half of the "homelessness became a permanent debuff" report (Workshop,
+                    // 2026-09-19) and of soldiers trained out of a town counting as homeless.
+                    OwnerOf(target).DestroyPerson(target, m.LeaveBody);
                 }
                 catch (Exception ex)
                 {
                     NetLog.Error("villager death", ex);
                 }
             }
+        }
+
+        /// <summary>
+        /// The kingdom a villager belongs to, by worker list, falling back to the local player.
+        ///
+        /// By membership rather than by who sent the message: the sender is normally the owner,
+        /// but a villager can be killed by somebody else's dragon or army, and the kingdom that
+        /// has to forget them is the one holding them.
+        /// </summary>
+        private static Player OwnerOf(Villager v)
+        {
+            foreach (SessionPlayer sp in Main.kCPlayers.Values)
+            {
+                if (sp == null || sp.inst == null || sp.inst.Workers == null) continue;
+
+                for (int i = 0; i < sp.inst.Workers.Count; i++)
+                    if (ReferenceEquals(sp.inst.Workers.data[i], v)) return sp.inst;
+            }
+
+            return Player.inst;
         }
 
         /// <summary>

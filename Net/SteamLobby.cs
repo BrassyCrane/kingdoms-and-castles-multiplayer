@@ -153,6 +153,7 @@ namespace KaCMultiplayer.Net
                 InGameChat.Reset();
                 KaCMultiplayer.Lobby.DiplomacyWindow.Reset();
                 KaCMultiplayer.Trade.ExportPrices.Reset();
+                KaCMultiplayer.Net.KingdomMirror.Reset();
                 KaCMultiplayer.Trade.ExportPricesWindow.Reset();
 
                 KaCMultiplayer.Lobby.DealRequestWindow.Reset();

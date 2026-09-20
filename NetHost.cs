@@ -95,6 +95,7 @@ namespace KaCMultiplayer
                     // and the send queue is shared: every one of those is taken out of the budget
                     // of the players still waiting for their own copy.
                     KaCMultiplayer.Net.SaveTransfer.Forget(ev.Client.Id);
+                    KaCMultiplayer.Net.KingdomMirror.Forget(ev.Client.Id);
 
                     // NetPlayers.ById returns null for an unknown client instead of throwing, so
                     // a messy disconnect no longer needs a swallowing try/catch here.

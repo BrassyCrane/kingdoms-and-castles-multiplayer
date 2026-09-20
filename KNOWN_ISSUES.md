@@ -15,6 +15,11 @@ Each entry says what you see, and what to do about it if there is a workaround.
   loaded. Fixed for the next version.
 - **A big save takes about a minute to send** to each player joining it. The loading bar is slow,
   not stuck.
+- **A guest's kingdom could come back wrong after a reload**: resources gone, villagers stuck
+  homeless for good, and new settlers pouring in to fill the houses they left. The host was saving
+  its own view of everyone else's kingdom. Each player's own copy is now what gets saved, and a
+  loaded game repairs houses and homeless lists it finds in disagreement. Fixed for the next
+  version.
 
 ## The map
 
