@@ -36,6 +36,26 @@ loaded save. Open an issue here, or comment on the Workshop page.
 Fixes are very welcome, and they ship on the main Workshop item with your name on them. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Rights and use
+
+This mod is not open source. Its code, art and assets are copyright BrassyCrane, all rights
+reserved.
+
+**You may** read the code, fork this repository on GitHub to prepare a pull request, and play the
+mod.
+
+**You may not**, without my written permission:
+
+- republish this mod, or a modified copy of it, on the Steam Workshop or anywhere else
+- ship it, or parts of it, inside another mod, pack or product
+- reuse its code, art or assets in your own project
+
+Sending a pull request means your contribution may be included here and distributed with the mod
+under these same terms, with credit to you.
+
+The one exception is the bundled RiptideNetworking library, which keeps its own MIT licence. See
+[LICENSE.md](LICENSE.md).
+
 ## Credits
 
 Created by **BrassyCrane**. Maintained by **BrassyCrane** and **Mr.Sajtos**.

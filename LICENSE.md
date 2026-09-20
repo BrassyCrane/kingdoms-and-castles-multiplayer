@@ -1,3 +1,16 @@
+# Licence
+
+## This mod
+
+Kingdoms and Castles Multiplayer is copyright BrassyCrane, all rights reserved. It is **not** open
+source, and the third-party licence below covers only the bundled library it names.
+
+You may read the code, fork the repository on GitHub to prepare a pull request, and play the mod.
+Republishing it or a modified copy of it, shipping it inside another mod or product, or reusing its
+code, art or assets elsewhere requires written permission from BrassyCrane.
+
+See [README.md](README.md#rights-and-use) for the same terms in full.
+
 # Third-party licences
 
 ## RiptideNetworking

@@ -33,6 +33,7 @@ games.
 By opening a pull request you agree that your contribution may be included in this mod and
 distributed with it under these same terms, with credit to you.
 
-Please do **not** republish this mod, or a modified copy of it, on the Steam Workshop or elsewhere.
+Republishing this mod, or a modified copy of it, on the Steam Workshop or anywhere else requires
+my written permission, and the same goes for reusing its code, art or assets in another project.
 Players ending up split across several copies is the one outcome that helps nobody. If you have
-fixes, send them here and they will reach everyone through the main item.
+fixes, send them here and they will reach everyone through the main item, with your name on them.
