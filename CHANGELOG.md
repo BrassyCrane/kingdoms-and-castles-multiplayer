@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.15.0
+
+- Your kingdom is saved from your own game, not from the host's copy of it. Reloading a save no
+  longer wipes a guest's resources, leaves villagers homeless for good, or lets new settlers flood
+  in to fill the houses they left. Reported by BlueJay.
+- Villagers who die are removed from their own kingdom everywhere. Soldiers trained out of a town
+  no longer count as homeless on the other players' machines. Reported by DragonTheLarp.
+- Loading a save repairs any houses, residents and homeless lists that disagree, so a session saved
+  by an older version comes back healthy.
+- Tax rates are synced, so the host saves the rate each player actually set.
+- Houses, farms and blacksmiths belong to their own kingdom: no more taxing every house in the
+  world at your rate, counting your windmills for someone else's farm, or your advisor complaining
+  about another player's full blacksmith.
+- A saved game now gets its own lobby: the world settings you cannot change are replaced by what
+  the save holds, and the player list shows the save's kingdoms, dimming the ones whose player has
+  not joined yet.
+- New loading screen, and the bar is brightest where the loading is.
+- The diplomacy window is wider, and Demand and Send Aid are real buttons. Demand could not be
+  clicked before.
+- The demand, alliance and trade popups, the resource picker and the export price window are
+  rebuilt to match the rest of the mod. The picker's buttons no longer sit outside its window.
+- Buttons look and sound like the game's own.
+- Players joining a game in progress no longer cost the others their view of each other's kingdoms.
+
 ## 0.14.0
 
 From Bill Kerman's community patch:
