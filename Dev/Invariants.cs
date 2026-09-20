@@ -84,6 +84,7 @@ namespace KaCMultiplayer.Dev
             TaxRatesReachTheirKingdom();
             RosterKeepsKingdomObjects();
             HomelessListsBelongToTheirKingdom();
+            HousingDecisionsBelongToTheOwner();
         }
 
         // ---- CLASS 1: A PER-LANDMASS ARRAY SIZED BEFORE THE MAP EXISTED -------------------
@@ -908,6 +909,85 @@ namespace KaCMultiplayer.Dev
             {
                 check("the homeless list check finished without throwing", false);
                 Main.LogEx("[SELFTEST] homeless lists", ex);
+            }
+        }
+
+        /// <summary>
+        /// Only a kingdom's own machine decides who moves into its houses, and only its own
+        /// buildings answer "yes" to IsPlayerBuilding.
+        ///
+        /// TownSquare is a plain MonoBehaviour whose Update calls TrySettlePeople for every town
+        /// square in the scene, whoever owns it, so before the gate every machine housed every
+        /// kingdom's arrivals from its own view of which homes were free. Two machines settling
+        /// the same arrival is the "the cap came off" report, and their resident lists parting
+        /// company is the homelessness that never clears.
+        ///
+        /// Calls it directly for another kingdom and for our own. numToTry is 0 on our own call so
+        /// running the suite cannot actually move anybody in.
+        /// </summary>
+        private static void HousingDecisionsBelongToTheOwner()
+        {
+            try
+            {
+                if (!NetClient.client.IsConnected)
+                {
+                    log("[SELFTEST] not in a session, housing ownership not checked");
+                    return;
+                }
+
+                Player mine = Player.inst;
+                Player theirs = null;
+
+                foreach (SessionPlayer kp in Main.kCPlayers.Values)
+                {
+                    Player p = (kp == null) ? null : kp.inst;
+                    if (p == null || p == mine || p.PlayerLandmassOwner == null) continue;
+                    if (!Main.ForeignKingdomTeam(p.PlayerLandmassOwner.teamId)) continue;
+
+                    theirs = p;
+                    break;
+                }
+
+                if (mine == null || theirs == null || mine.keep == null || theirs.keep == null)
+                {
+                    log("[SELFTEST] no second kingdom with a keep, housing ownership not checked");
+                    return;
+                }
+
+                Building ourKeep = mine.keep.GetComponent<Building>();
+                Building theirKeep = theirs.keep.GetComponent<Building>();
+                if (ourKeep == null || theirKeep == null)
+                {
+                    log("[SELFTEST] a keep has no Building, housing ownership not checked");
+                    return;
+                }
+
+                // Vanilla takes these by ref, not out, so they start life here.
+                int housed = 0;
+                bool shortage = false;
+
+                int before = Main.PlayerTrySettlePeopleForeignHook.SkippedForeign;
+                theirs.TrySettlePeople(theirKeep.LandMass(), 1, 0, ref housed, ref shortage);
+
+                check("another kingdom's housing decision is left to its owner",
+                      Main.PlayerTrySettlePeopleForeignHook.SkippedForeign == before + 1);
+                check("a skipped housing call reports nobody housed", housed == 0);
+
+                before = Main.PlayerTrySettlePeopleForeignHook.SkippedForeign;
+                mine.TrySettlePeople(ourKeep.LandMass(), 0, 0, ref housed, ref shortage);
+
+                check("our own housing decision still runs",
+                      Main.PlayerTrySettlePeopleForeignHook.SkippedForeign == before);
+
+                // The same question from the building's side. Before the gate this answered
+                // "whoever is simulating right now", which made every building in the world ours.
+                check("our own keep counts as one of our buildings", ourKeep.IsPlayerBuilding());
+                check("another kingdom's keep does not count as one of ours", !theirKeep.IsPlayerBuilding());
+            }
+            catch (Exception ex)
+            {
+                check("the housing ownership check finished without throwing", false);
+                Main.LogEx("[SELFTEST] housing ownership", ex);
             }
         }
 

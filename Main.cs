@@ -6595,6 +6595,186 @@ namespace KaCMultiplayer
             }
         }
 
+        /// <summary>
+        /// True when <paramref name="team"/> is another player's kingdom rather than ours, which
+        /// is the question every ownership gate in this file asks.
+        ///
+        /// Teams 0 to 4 are the game's own neutral and AI range: they tick the same way on every
+        /// machine by design and nothing here should touch them. Team 5 and up is a real human
+        /// kingdom, and exactly one machine is entitled to decide anything about it.
+        ///
+        /// "Ours" is Player.inst, which is the local kingdom everywhere except inside the two
+        /// deliberate swaps (SessionSave while packing, NetRegistrations while applying). Nothing
+        /// gated by this runs inside one of those windows.
+        /// </summary>
+        public static bool ForeignKingdomTeam(int team)
+        {
+            int localTeam = (Player.inst != null && Player.inst.PlayerLandmassOwner != null)
+                ? Player.inst.PlayerLandmassOwner.teamId : int.MinValue;
+
+            return team >= 5 && team != localTeam;
+        }
+
+        // WHO DECIDES WHO MOVES IN, reported twice on 2026-09-20: after a reload the limit on how
+        // many people could move in appeared to come off, and homelessness never cleared again.
+        //
+        // Player.TrySettlePeople and Player.UpdatePersonArrival are the only two callers of
+        // Villager.SetHome in the whole game (read off the shipped IL, not assumed).
+        // UpdatePersonArrival is reached only from Player.Update, and PlayerPatch already
+        // suppresses Update on a remote kingdom's "Client Player" object, so that path is ours
+        // alone already and needs nothing.
+        //
+        // TrySettlePeople is the hole. TownSquare is a plain MonoBehaviour: its own Update runs on
+        // EVERY town square in the scene, whoever owns it, and calls TrySettleAttractedPeople. So
+        // this machine decides who moves into another player's houses, reading its own idea of
+        // which of their homes are free, and so does every other machine, at the same time.
+        //
+        // That race is both halves of the report. Several machines settle the same arrivals
+        // because each sees the same vacancy before anyone's SetHome has travelled, which looks
+        // like the cap coming off; and their lists of who lives where drift apart, which is a
+        // villager homeless on one screen and housed on another, permanently, since nothing
+        // reconciles them while the session is running.
+        //
+        // Gated the same way Barracks.Tick is: the kingdom's own machine decides and broadcasts,
+        // everyone else applies what arrives. The cheat key path (KeyboardControl.UpdateCheatKeys)
+        // goes through the same gate, which is right, it is the local player's own cheat.
+        [HarmonyPatch(typeof(Player), "TrySettlePeople")]
+        public class PlayerTrySettlePeopleForeignHook
+        {
+            /// <summary>Counted, not logged: this is a per-frame path and a log line here would
+            /// bury the session. Read by the acceptance suite.</summary>
+            public static int SkippedForeign;
+
+            public static bool Prefix(Player __instance, ref int numHoused, ref bool housingShortage)
+            {
+                if (!NetClient.client.IsConnected || __instance == null) return true;
+
+                try
+                {
+                    LandmassOwner owner = __instance.PlayerLandmassOwner;
+                    if (owner == null || !ForeignKingdomTeam(owner.teamId)) return true;
+
+                    // Vanilla assigns both of these on every path, and TownSquare.Update reads
+                    // numHoused the moment the call returns, so skipping the body must still
+                    // leave them sane rather than whatever the caller happened to pass in.
+                    numHoused = 0;
+                    housingShortage = false;
+                    SkippedForeign++;
+                    return false;
+                }
+                catch (Exception e) { Main.LogEx("TrySettlePeople ownership gate", e); }
+
+                return true;
+            }
+        }
+
+        // "IS THIS BUILDING MINE" HAD STOPPED MEANING ANYTHING. Vanilla's Building.IsPlayerBuilding
+        // is one line: World.GetLandmassOwner(GetCell().landMassIdx) == Player.inst.PlayerLandmassOwner.
+        //
+        // BuildingPlayerReferencePatch rewrites Player.inst inside every Building instance method
+        // to "this building's own owner", which is what tax, jobs and storage need and is exactly
+        // wrong here: the comparison turns into "does this building's owner own this building",
+        // which is true for every building in the world.
+        //
+        // PlayBuildingSound, TakeDamageInternal and Keep.SetAdvisorMessage all gate on it and
+        // trust it to mean "mine", so every player's construction noise, damage warning and
+        // advisor message became everyone's. Answered here from the ground the building stands on,
+        // and the rewritten body never runs.
+        [HarmonyPatch(typeof(Building), "IsPlayerBuilding")]
+        public class BuildingIsPlayerBuildingHook
+        {
+            public static bool Prefix(Building __instance, ref bool __result)
+            {
+                if (!NetClient.client.IsConnected) return true;   // single player: vanilla is right
+
+                try
+                {
+                    Cell cell = (__instance == null) ? null : __instance.GetCell();
+                    LandmassOwner ground = (cell == null) ? null : World.GetLandmassOwner(cell.landMassIdx);
+                    LandmassOwner mine = (Player.inst == null) ? null : Player.inst.PlayerLandmassOwner;
+
+                    __result = ground != null && mine != null && ground == mine;
+                    return false;
+                }
+                catch (Exception e) { Main.LogEx("IsPlayerBuilding", e); }
+
+                return true;
+            }
+        }
+
+        // ONE KINGDOM'S NEWS IN EVERYBODY'S LOG. KingdomLog.TryLog is the single funnel behind
+        // every line the log panel shows, and it is called from inside whichever kingdom's
+        // simulation raised the event. Vanilla filters land owned by an AI, which in single player
+        // is the only thing worth filtering. Here every human kingdom's buildings tick on every
+        // machine, so "not AI" is true for all of them, and another player's fire, plague or
+        // unhappy peasants were announced in our log as though they were ours.
+        //
+        // A landmass of -1 is vanilla's own "this is not about one kingdom" case (weather and the
+        // like) and is left alone.
+        [HarmonyPatch(typeof(KingdomLog), "TryLog")]
+        public class KingdomLogTryLogHook
+        {
+            public static bool Prefix(int landmass)
+            {
+                if (!NetClient.client.IsConnected || landmass < 0) return true;
+
+                try
+                {
+                    LandmassOwner ground = World.GetLandmassOwner(landmass);
+                    LandmassOwner mine = (Player.inst == null) ? null : Player.inst.PlayerLandmassOwner;
+
+                    // Unowned ground, or too early for anyone to own anything: leave it to vanilla
+                    // rather than silently swallowing a line that may be about the world itself.
+                    if (ground == null || mine == null) return true;
+
+                    return ground == mine;
+                }
+                catch (Exception e) { Main.LogEx("KingdomLog gate", e); }
+
+                return true;
+            }
+        }
+
+        // PINK BOATS ON THE OTHER PLAYER'S SCREEN. ShipBase.UpdateMaterial paints every mesh with
+        // World.GetLandmassOwnerByTeamId(_teamID).UniMaterialFogClip and checks neither the owner
+        // nor the material. ShipBase.Init calls it the instant a ship is created, which on another
+        // machine can be before that kingdom's banner material exists, and Unity draws a null
+        // material hot pink.
+        //
+        // RepaintShipHulls already repaints on the next banner sweep, but a fishing boat is born
+        // and gone faster than the sweep comes round, so there is nearly always a fresh pink one
+        // somewhere, which reads as "their boats are pink" rather than "one boat was, briefly".
+        //
+        // Skipping the paint leaves the hull prefab's own material, an undyed boat rather than an
+        // obviously broken one, and asks for a sweep that will paint it for real. It also avoids
+        // the NRE vanilla would throw here for a ship whose team owns no landmass.
+        [HarmonyPatch(typeof(ShipBase), "UpdateMaterial")]
+        public class ShipBaseUpdateMaterialHook
+        {
+            public static bool Prefix(ShipBase __instance)
+            {
+                if (!NetClient.client.IsConnected || __instance == null) return true;
+
+                try
+                {
+                    int teamId = PrivateField.Get<int>(__instance, "_teamID", -1);
+                    if (teamId < 0) return true;   // vanilla's own no-op path, nothing to guard
+
+                    LandmassOwner owner = World.GetLandmassOwnerByTeamId(teamId);
+                    if (owner == null) return false;
+
+                    if (owner.UniMaterialFogClip == null)
+                    {
+                        MarkBannersDirty();
+                        return false;
+                    }
+                }
+                catch (Exception e) { Main.LogEx("ship material guard", e); }
+
+                return true;
+            }
+        }
+
         [HarmonyPatch(typeof(Barracks), "Tick")]
         public class BarracksTickForeignHook
         {
@@ -6616,10 +6796,7 @@ namespace KaCMultiplayer
                     // placement failed. Unowned means nobody foreign owns it, so let it tick.
                     if (World.GetLandmassOwner(b.LandMass()) == null) return true;
 
-                    int team = b.TeamID();
-                    int localTeam = (Player.inst != null && Player.inst.PlayerLandmassOwner != null)
-                        ? Player.inst.PlayerLandmassOwner.teamId : int.MinValue;
-                    if (team >= 5 && team != localTeam) return false; // foreign player's barracks: not ours to simulate
+                    if (ForeignKingdomTeam(b.TeamID())) return false; // not ours to simulate
                 }
                 catch (Exception e)
                 {
