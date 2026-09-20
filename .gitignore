@@ -2,3 +2,6 @@
 .claude/
 output.txt
 __pycache__/
+
+# Local notes, not part of the mod
+rules.md
