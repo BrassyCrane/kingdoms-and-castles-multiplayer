@@ -61,7 +61,8 @@ More fixes:
 
 Other changes:
 
-- Viking raids and army position sync are switched on
+- Viking raids and army position sync, both already written and sitting behind switches, are on by
+  default now
 - Source code is now on GitHub
 
 ## 0.10.1 and earlier
