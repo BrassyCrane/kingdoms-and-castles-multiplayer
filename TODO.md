@@ -23,26 +23,31 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
 - **Witch huts are switched off in multiplayer.** Turn them back on with their spawning owned by one
   machine, the way wolves are.
 
-## Waiting on a decision: six fixes in Bill Kerman's 20 Sep build
+## Decisions one machine should make, and currently every machine makes
 
-His build is our 0.14.0 plus these. None of them are in ours, and they are his own work, so they
-need his agreement (a pull request from him is the clean route) before any of it is taken.
+Each of these is vanilla logic that runs for every kingdom on every machine, so the machines race
+and disagree. The pattern is the same one already used for barracks and for trade ships: the
+kingdom's own machine decides, everyone else applies what it broadcasts.
 
-- **Immigration and housing decided only by the kingdom's owner.** `Player.UpdatePersonArrival` and
-  `Player.TrySettlePeople` run for every kingdom on every machine, so three machines race to house
-  the same arrivals. This is the likely cause of the reported uncapped immigration and permanent
-  homelessness after a reload.
-- **Job assignment decided only by the owner** (`Job.UpdateAssignment`). Stops the same race over
-  who works where. Note the trade: another player's storage buildings then sit empty in your copy,
-  which is what makes their granary contents unreadable to you.
-- **Ships painted pink on a guest's screen** (`ShipBase.UpdateMaterial`): a boat created before its
-  owner's banner material exists gets a null material. Skip the paint and repaint later instead.
-  This is our longboat report.
-- **Another kingdom's news in your kingdom log** (`KingdomLog.TryLog`): vanilla only filters AI
-  land, so every human kingdom's events announce themselves on every machine.
+- **Immigration and housing.** `Player.UpdatePersonArrival` and `Player.TrySettlePeople` are the
+  only two callers of `Villager.SetHome`, and both run for every kingdom everywhere, so several
+  machines house the same arrivals off the same apparent vacancy. Almost certainly the reported
+  uncapped immigration and the homelessness that never clears after a reload.
+- **Job assignment.** `Job.UpdateAssignment` has the same shape. Careful with the trade: gating it
+  means another player's production buildings get no workers in our copy, so their stores read
+  empty here, which is the same gap that made tribute pay the wrong amount.
 - **`Building.IsPlayerBuilding` answers "whoever is simulating right now"**, so construction
   sounds, damage warnings and advisor messages fire for other players' buildings.
-- **The host's lobby UI is never hidden** when the session starts, only the guests'.
+- **`KingdomLog.TryLog` only filters AI land**, so every kingdom's news lands in everybody's log.
+
+## Smaller, and each one visible to players
+
+- **Ships can draw hot pink on another player's screen.** `ShipBase.UpdateMaterial` paints from the
+  owner's banner material, and a boat created before that material exists gets a null one. Fishing
+  boats spawn and despawn faster than the banner sweep runs, so there is nearly always a fresh one.
+  This is the longboat report.
+- **The host's own lobby UI is never hidden when the session starts.** Guests get the transition,
+  the host's screen stays alive underneath the game.
 
 ## Not synced yet, and each one is a way for two machines to drift apart
 
