@@ -23,6 +23,27 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
 - **Witch huts are switched off in multiplayer.** Turn them back on with their spawning owned by one
   machine, the way wolves are.
 
+## Waiting on a decision: six fixes in Bill Kerman's 20 Sep build
+
+His build is our 0.14.0 plus these. None of them are in ours, and they are his own work, so they
+need his agreement (a pull request from him is the clean route) before any of it is taken.
+
+- **Immigration and housing decided only by the kingdom's owner.** `Player.UpdatePersonArrival` and
+  `Player.TrySettlePeople` run for every kingdom on every machine, so three machines race to house
+  the same arrivals. This is the likely cause of the reported uncapped immigration and permanent
+  homelessness after a reload.
+- **Job assignment decided only by the owner** (`Job.UpdateAssignment`). Stops the same race over
+  who works where. Note the trade: another player's storage buildings then sit empty in your copy,
+  which is what makes their granary contents unreadable to you.
+- **Ships painted pink on a guest's screen** (`ShipBase.UpdateMaterial`): a boat created before its
+  owner's banner material exists gets a null material. Skip the paint and repaint later instead.
+  This is our longboat report.
+- **Another kingdom's news in your kingdom log** (`KingdomLog.TryLog`): vanilla only filters AI
+  land, so every human kingdom's events announce themselves on every machine.
+- **`Building.IsPlayerBuilding` answers "whoever is simulating right now"**, so construction
+  sounds, damage warnings and advisor messages fire for other players' buildings.
+- **The host's lobby UI is never hidden** when the session starts, only the guests'.
+
 ## Not synced yet, and each one is a way for two machines to drift apart
 
 - **Building storage contents** (granaries, stores). `EconomySnapshotMessage` exists but nothing
