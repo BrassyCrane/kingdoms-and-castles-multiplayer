@@ -47,7 +47,7 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
 - **Foreign merchants cannot visit another player's docks.** Any merchant heading for a dock outside
   the local player's landmasses is destroyed. Letting them trade between kingdoms means provisioning
   them from the right kingdom again.
-- **Single kingdom leads left in `docs/singleton-audit-findings.md`**: WorldMask, UnitSystem,
+- **State the game keeps once, that multiplayer needs per kingdom**: WorldMask, UnitSystem,
   SiegeCatapult, DragonSpawn, and the static `Home.BuildGatherTypeOrder` and
-  `HomeSaveData.UnloadVillager`. Each one is state the game keeps once and multiplayer needs per
-  kingdom.
+  `HomeSaveData.UnloadVillager`. Each one is a place where two kingdoms share something they should
+  not.

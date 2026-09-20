@@ -12,8 +12,9 @@ Workshop item with credit to you, in the change notes and in the Git history.
 
 ## Before you open a pull request
 
-1. **It compiles.** Run `bash docs/compile_check.sh`. It compiles the whole mod against the game's
-   own assemblies in a few seconds, no game launch needed.
+1. **It compiles.** Build it against the game's own assemblies in
+   `KingdomsAndCastles_Data\Managed` before sending it, and say that you did. A pull request that
+   does not compile cannot be reviewed.
 2. **It works across machines.** Most bugs in this mod only appear with two or more players on
    separate PCs, a guest joining a loaded save, or three kingdoms instead of two. Test the case your
    fix is about, and say which one you tested.
