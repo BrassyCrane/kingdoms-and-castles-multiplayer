@@ -1,29 +1,56 @@
 # To do
 
-Planned work for the multiplayer mod, roughly in the order we mean to get to it. Bugs players hit in
-the released version live in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend to
-build or fix next.
+Work we mean to do on the multiplayer mod. Bugs players hit in the released version are described
+for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend to build or fix.
 
 ## Next
 
 - **Check everyone is running the same mods when a game is created or joined.** Different mod lists
   between host and guest desync the session in ways that look like our own bugs. Send the enabled
-  mod list (Workshop id and version) with the join handshake, compare it, and if it differs show
-  the player exactly what is wrong with a one click fix: switch on or off the mods they already
-  have, and open the Workshop page for anything they are missing. Worth checking first whether the
-  game's mod loader can enable a mod without a restart; if it cannot, the fix button has to apply
-  the change and restart the game.
-- **Builders forget to finish construction after a player rejoins.** Reported 2026-09-20.
-  Workaround for now is to delete the site and place it again.
-- **A guest's kingdom log shows Year 1 after a load**, and **a guest's food can reset to 0**. Both
-  parked, neither reproduces solo yet.
-- **Test round for 0.15.0**: guest resources after a reload, homeless counts, immigration, and that
-  every popup opens and its buttons work.
+  mod list (Workshop id and version) with the join handshake, compare it, and if it differs show the
+  player exactly what is wrong with a one click fix: switch on or off the mods they already have,
+  and open the Workshop page for anything they are missing. Worth checking first whether the game's
+  mod loader can enable a mod without a restart; if it cannot, the fix button has to apply the
+  change and restart the game.
+- **Builders forget to finish construction after a player rejoins.** Reported 2026-09-20, workaround
+  is to delete the site and place it again. Construction progress on another player's sites is not
+  synced, which is the first place to look.
+- **Longboats look wrong on a guest's screen.**
+- **The raid system throws and the error is only caught.** The clock no longer freezes, but a year
+  can pass with no raid and the cause is still unknown.
+- **The Hall of Diplomacy is disabled in multiplayer**, because the game only opens it when AI
+  kingdoms exist. Ctrl + Shift + D stands in for it. Make the real screen open instead.
+- **Witch huts are switched off in multiplayer.** Turn them back on with their spawning owned by one
+  machine, the way wolves are.
+
+## Not synced yet, and each one is a way for two machines to drift apart
+
+- **Building storage contents** (granaries, stores). `EconomySnapshotMessage` exists but nothing
+  ever sends it. Diplomacy tribute works around it by settling on whichever machine answers for the
+  payer.
+- **Villager hunger and health.**
+- **Job assignments.**
+- **Construction progress on another player's sites**, see the builder report above.
+- **Army positions are corrected in batches**, so a fast chase can briefly look different on each
+  screen. Smooth it out.
+- **A kingdom whose player left is only half frozen.** `Main.FreezeGhostKingdomsFully` gates the
+  rest, ships off and has never been run. Buildings and villagers keep ticking for a player who is
+  gone, because gating them costs a component lookup per entry per frame.
 
 ## Later
 
-- **The server browser lists nothing.** Joining works through Steam invites, so this is deferred.
-- **Building storage contents are not synced** (granaries, stores). Diplomacy tribute works around
-  it by settling on one machine.
-- **Villager hunger, health, job assignments and construction progress** on another player's sites
-  are not synced either, and are the most likely home of the builder report above.
+- **The server browser lists nothing.** Joining works through Steam invites. Deferred on purpose.
+  When it is picked up, check that the `SetLobbyData` publish and the `RequestLobbyList` filter
+  really round trip, with logging on both ends.
+- **A big save takes about a minute to reach each joining player.** It is sent in 64 chunk windows;
+  make it quicker or make the wait clearer.
+- **Foreign merchants cannot visit another player's docks.** Any merchant heading for a dock outside
+  the local player's landmasses is destroyed. Letting them trade between kingdoms means provisioning
+  them from the right kingdom again.
+- **Single kingdom leads left in `docs/singleton-audit-findings.md`**: WorldMask, UnitSystem,
+  SiegeCatapult, DragonSpawn, and the static `Home.BuildGatherTypeOrder` and
+  `HomeSaveData.UnloadVillager`. Each one is state the game keeps once and multiplayer needs per
+  kingdom.
+- **Refresh `KNOWN_ISSUES.md` for 0.15.0.** It still describes 0.14.0 and lists things that are now
+  fixed: the guest's Year 1 and food reset, tax rates not saving, and the map mismatch when Size or
+  Rivers changed.
