@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Runtime.Serialization.Formatters.Binary;
+using System.Text;
 
+using KaCMultiplayer.LoadSaveOverrides;
 using KaCMultiplayer.Net.Messages;
 
 namespace KaCMultiplayer.Net
@@ -32,6 +32,11 @@ namespace KaCMultiplayer.Net
     /// copy (see SessionSave.Pack). Whatever we sync or fail to sync, the SAVE is then the owner's
     /// own state.
     ///
+    /// PACKED AS JSON, not with a binary formatter: the game's mod security scanner rejects
+    /// System.IO and System.Runtime.Serialization in mod code, and a build using them fails the
+    /// Workshop tool's compile check outright. The save block already stores these same objects as
+    /// JSON, so this reuses that (ModSaveData.SerializeKingdom).
+    ///
     /// ONE TRANSFER PER SAVE, NOT PER TICK. The host asks for a fresh copy right after it saves, so
     /// each kingdom is packed once per autosave (a season) rather than continuously, and the copy
     /// waiting for the next save is at most one season old. Chunks are paced exactly like the save
@@ -39,9 +44,9 @@ namespace KaCMultiplayer.Net
     /// </summary>
     public static class KingdomMirror
     {
-        /// <summary>Bytes per chunk. Same as the save transfer: one reliable message, with room
-        /// for the header.</summary>
-        private const int ChunkBytes = 900;
+        /// <summary>Characters per chunk. Sized like a save-transfer chunk: one reliable message,
+        /// with room for the header.</summary>
+        private const int ChunkChars = 800;
 
         private const int ChunksPerPump = 16;
         private const float PumpIntervalSeconds = 0.02f;
@@ -54,8 +59,8 @@ namespace KaCMultiplayer.Net
         private static readonly Dictionary<string, float> arrivedAt = new Dictionary<string, float>();
 
         /// <summary>Host side: partial transfers, by the client sending them.</summary>
-        private static readonly Dictionary<ushort, byte[]> incoming = new Dictionary<ushort, byte[]>();
-        private static readonly Dictionary<ushort, bool[]> seen = new Dictionary<ushort, bool[]>();
+        private static readonly Dictionary<ushort, string[]> incoming = new Dictionary<ushort, string[]>();
+        private static readonly Dictionary<ushort, int> pending = new Dictionary<ushort, int>();
 
         /// <summary>Sender side: chunks still to go out.</summary>
         private static readonly Queue<KingdomMirrorMessage> outgoing = new Queue<KingdomMirrorMessage>();
@@ -87,7 +92,7 @@ namespace KaCMultiplayer.Net
             mirrors.Clear();
             arrivedAt.Clear();
             incoming.Clear();
-            seen.Clear();
+            pending.Clear();
             outgoing.Clear();
             pumpClock = 0f;
             sentOnce = false;
@@ -133,33 +138,26 @@ namespace KaCMultiplayer.Net
                 if (Player.inst == null) return;
                 if (GameState.inst == null || !GameState.inst.IsPlayMode()) return;
 
-                byte[] bytes;
-                using (MemoryStream ms = new MemoryStream())
-                {
-                    new BinaryFormatter().Serialize(ms, new Player.PlayerSaveData().Pack(Player.inst));
-                    bytes = ms.ToArray();
-                }
+                string json = ModSaveData.SerializeKingdom(new Player.PlayerSaveData().Pack(Player.inst));
 
-                int total = (bytes.Length + ChunkBytes - 1) / ChunkBytes;
+                int total = (json.Length + ChunkChars - 1) / ChunkChars;
                 outgoing.Clear();   // only the newest copy is worth sending
 
                 for (int i = 0; i < total; i++)
                 {
-                    int offset = i * ChunkBytes;
-                    int size = Math.Min(ChunkBytes, bytes.Length - offset);
-                    byte[] slice = new byte[size];
-                    Buffer.BlockCopy(bytes, offset, slice, 0, size);
+                    int offset = i * ChunkChars;
+                    int size = Math.Min(ChunkChars, json.Length - offset);
 
                     outgoing.Enqueue(new KingdomMirrorMessage
                     {
-                        TotalBytes = bytes.Length,
+                        TotalChars = json.Length,
                         TotalChunks = total,
                         ChunkId = i,
-                        Data = slice
+                        Data = json.Substring(offset, size)
                     });
                 }
 
-                NetLog.Info("sending our kingdom to the host: " + (bytes.Length / 1024) + " KB in " + total + " chunk(s)");
+                NetLog.Info("sending our kingdom to the host: " + (json.Length / 1024) + " KB in " + total + " chunk(s)");
             }
             catch (Exception e) { NetLog.Error("packing our kingdom for the host", e); }
         }
@@ -198,7 +196,7 @@ namespace KaCMultiplayer.Net
             try
             {
                 if (!NetRouter.IsServer || m == null || m.Data == null) return;
-                if (m.TotalBytes <= 0 || m.TotalChunks <= 0) return;
+                if (m.TotalChars <= 0 || m.TotalChunks <= 0) return;
 
                 string steamId;
                 if (!Main.clientSteamIds.TryGetValue(m.Origin, out steamId) || string.IsNullOrEmpty(steamId))
@@ -207,49 +205,44 @@ namespace KaCMultiplayer.Net
                     return;
                 }
 
-                byte[] buffer;
-                if (!incoming.TryGetValue(m.Origin, out buffer) || buffer.Length != m.TotalBytes)
+                string[] parts;
+                if (!incoming.TryGetValue(m.Origin, out parts) || parts.Length != m.TotalChunks)
                 {
-                    buffer = new byte[m.TotalBytes];
-                    incoming[m.Origin] = buffer;
-                    seen[m.Origin] = new bool[m.TotalChunks];
+                    parts = new string[m.TotalChunks];
+                    incoming[m.Origin] = parts;
+                    pending[m.Origin] = m.TotalChunks;
                 }
 
-                bool[] have = seen[m.Origin];
-                if (m.ChunkId < 0 || m.ChunkId >= have.Length) return;
+                if (m.ChunkId < 0 || m.ChunkId >= parts.Length) return;
+                if (parts[m.ChunkId] != null) return;   // a duplicate chunk is not a second piece
 
-                int offset = m.ChunkId * ChunkBytes;
-                if (offset + m.Data.Length > buffer.Length) return;
+                parts[m.ChunkId] = m.Data;
+                if (--pending[m.Origin] > 0) return;    // still missing pieces
 
-                Buffer.BlockCopy(m.Data, 0, buffer, offset, m.Data.Length);
-                have[m.ChunkId] = true;
+                StringBuilder json = new StringBuilder(m.TotalChars);
+                for (int i = 0; i < parts.Length; i++) json.Append(parts[i]);
 
-                for (int i = 0; i < have.Length; i++)
-                    if (!have[i]) return;   // still missing pieces
-
-                using (MemoryStream ms = new MemoryStream(buffer))
+                Player.PlayerSaveData data = ModSaveData.DeserializeKingdom(json.ToString());
+                if (data == null)
                 {
-                    Player.PlayerSaveData data = new BinaryFormatter().Deserialize(ms) as Player.PlayerSaveData;
-                    if (data == null)
-                    {
-                        NetLog.Warn("kingdom copy from client " + m.Origin + " did not deserialise");
-                        return;
-                    }
-
+                    NetLog.Warn("kingdom copy from client " + m.Origin + " did not read back");
+                }
+                else
+                {
                     mirrors[steamId] = data;
                     arrivedAt[steamId] = UnityEngine.Time.unscaledTime;
                     NetLog.Info("kingdom copy received from client " + m.Origin + " ("
-                                + (buffer.Length / 1024) + " KB); saves will use it");
+                                + (m.TotalChars / 1024) + " KB); saves will use it");
                 }
 
                 incoming.Remove(m.Origin);
-                seen.Remove(m.Origin);
+                pending.Remove(m.Origin);
             }
             catch (Exception e)
             {
                 NetLog.Error("receiving a kingdom copy", e);
                 incoming.Remove(m.Origin);
-                seen.Remove(m.Origin);
+                pending.Remove(m.Origin);
             }
         }
 
@@ -258,7 +251,7 @@ namespace KaCMultiplayer.Net
         public static void Forget(ushort clientId)
         {
             incoming.Remove(clientId);
-            seen.Remove(clientId);
+            pending.Remove(clientId);
         }
     }
 }

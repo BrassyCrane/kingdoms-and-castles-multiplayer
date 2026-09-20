@@ -7,6 +7,9 @@ namespace KaCMultiplayer.Net.Messages
     ///
     /// Same shape as a save-transfer chunk and for the same reason: a packed kingdom is far larger
     /// than one reliable message, so it travels in pieces and is reassembled by the receiver.
+    ///
+    /// Text rather than bytes, because the game's mod security scanner rejects System.IO in mod
+    /// code, so a kingdom is packed with the same JSON the save block uses (ModSaveData).
     /// </summary>
     public class KingdomMirrorMessage : IOriginated
     {
@@ -14,31 +17,31 @@ namespace KaCMultiplayer.Net.Messages
 
         public ushort Origin { get; set; }
 
-        /// <summary>Size of the whole packed kingdom, so the host can size its buffer once.</summary>
-        public int TotalBytes;
+        /// <summary>Length of the whole packed kingdom, so the host knows when it has all of it.</summary>
+        public int TotalChars;
 
         public int TotalChunks;
 
         public int ChunkId;
 
-        public byte[] Data;
+        public string Data;
 
         public void Serialize(Message m)
         {
             m.AddUShort(Origin);
-            m.AddInt(TotalBytes);
+            m.AddInt(TotalChars);
             m.AddInt(TotalChunks);
             m.AddInt(ChunkId);
-            m.AddBytes(Data ?? new byte[0]);   // length-prefixed: the last chunk is short
+            m.AddString(Data ?? string.Empty);   // length-prefixed: the last chunk is short
         }
 
         public void Deserialize(Message m)
         {
             Origin = m.GetUShort();
-            TotalBytes = m.GetInt();
+            TotalChars = m.GetInt();
             TotalChunks = m.GetInt();
             ChunkId = m.GetInt();
-            Data = m.GetBytes();
+            Data = m.GetString();
         }
     }
 

@@ -125,6 +125,25 @@ namespace KaCMultiplayer.LoadSaveOverrides
             TypeNameHandling = TypeNameHandling.Auto,
         };
 
+        /// <summary>
+        /// One kingdom as text, with the same settings a save uses.
+        ///
+        /// JSON rather than a binary formatter because the game's mod security scanner rejects
+        /// System.IO and System.Runtime.Serialization in mod code: a build using them fails the
+        /// Workshop tool's compile check with "Compilation failed" and a list of the instructions
+        /// it objected to. The save block already carries these same objects as JSON, so this is
+        /// the proven path rather than a new one. See Net/KingdomMirror.cs.
+        /// </summary>
+        public static string SerializeKingdom(Player.PlayerSaveData data)
+        {
+            return JsonConvert.SerializeObject(data, Settings);
+        }
+
+        public static Player.PlayerSaveData DeserializeKingdom(string json)
+        {
+            return JsonConvert.DeserializeObject<Player.PlayerSaveData>(json, Settings);
+        }
+
         public static string Serialize(ModSessionData data)
         {
             return JsonConvert.SerializeObject(data, Settings);
