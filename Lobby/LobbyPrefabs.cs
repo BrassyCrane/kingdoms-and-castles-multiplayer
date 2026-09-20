@@ -32,6 +32,11 @@ namespace KaCMultiplayer.Lobby
         public static GameObject ChatSystemEntry { get; private set; }
         public static GameObject Modal { get; private set; }
 
+        // In-game popups: alliance and deal requests, the resource picker, export prices.
+        public static GameObject Request { get; private set; }
+        public static GameObject Picker { get; private set; }
+        public static GameObject ExportPrices { get; private set; }
+
         /// <summary>
         /// The diplomacy window and its row. OPTIONAL, unlike everything above.
         ///
@@ -78,6 +83,9 @@ namespace KaCMultiplayer.Lobby
                 ChatEntry = Take("serverchatentry", ref missing);
                 ChatSystemEntry = Take("serverchatsystementry", ref missing);
                 Modal = Take("modalui", ref missing);
+                Request = Take("requestui", ref missing);
+                Picker = Take("pickerui", ref missing);
+                ExportPrices = Take("exportpricesui", ref missing);
 
                 // Optional, so an older bundle costs the diplomacy screen and nothing else.
                 DiplomacyScreen = TakeOptional("diplomacyui");
@@ -90,10 +98,15 @@ namespace KaCMultiplayer.Lobby
                     return false;
                 }
 
+                foreach (GameObject prefab in new[] { BrowserScreen, ServerEntry, ServerLobby, PlayerEntry,
+                                                      ChatEntry, ChatSystemEntry, Modal, Request, Picker,
+                                                      ExportPrices, DiplomacyScreen, DiplomacyRow })
+                    ClickSound.AddTo(prefab);
+
                 Ready = true;
 
                 bool diplomacy = DiplomacyScreen != null && DiplomacyRow != null;
-                NetLog.Info("all 7 required UI prefabs loaded" +
+                NetLog.Info("all 10 required UI prefabs loaded" +
                             (diplomacy ? ", plus the diplomacy screen"
                                        : "; no diplomacy screen in this bundle"));
                 return true;

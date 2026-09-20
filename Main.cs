@@ -830,6 +830,15 @@ namespace KaCMultiplayer
             // landmass and does nothing at all once the wiring is right.
             if (FixedUpdateInterval % 60 == 0) AliasJobTablesToOwners();
 
+            // A backstop for the kingdom copies the host saves. They are normally refreshed right
+            // after each save, which is every season; this covers a session that somehow never
+            // autosaves, so the copies can never go stale without limit. See Net/KingdomMirror.cs.
+            if (FixedUpdateInterval % 12000 == 0) KaCMultiplayer.Net.KingdomMirror.RequestFromEveryone();
+
+            // Guest side: send ours once, soon after the world is up, so an early save or a quick
+            // departure is still recorded from our own kingdom rather than from the host's view.
+            if (FixedUpdateInterval % 600 == 0) KaCMultiplayer.Net.KingdomMirror.EnsureFirstCopy();
+
             // Keep streamer effects the same on every machine. Silent, and free, unless somebody
             // is actually running them. See Net/StreamerEffectSync.cs.
             KaCMultiplayer.Net.StreamerEffectSync.Tick();
@@ -989,6 +998,10 @@ namespace KaCMultiplayer
             // and FixedUpdate does not run while it is. Paced off unscaled time inside, so the rate
             // on the wire is the same as it was on the fixed tick.
             SaveTransfer.PumpOutgoing();
+
+            // A guest's own kingdom on its way to the host, paced the same way and for the same
+            // reason. See Net/KingdomMirror.cs.
+            KaCMultiplayer.Net.KingdomMirror.Pump();
 
             // The other half of the same job, on the receiving side: notice when the world has
             // stopped arriving and ask for what is missing. See SaveTransfer.CheckForStall.
@@ -6172,6 +6185,29 @@ namespace KaCMultiplayer
             }
         }
 
+        /// <summary>
+        /// Tells everyone when the local player changes a tax rate.
+        ///
+        /// The rate lives on the Player object, so without this every other machine kept its copy
+        /// of our kingdom at 0: our homes were taxed wrong there, and the host saved 0 for us.
+        /// Only the local player's own changes are sent; applying someone else's rate also runs
+        /// SetTaxRate, on their Player, and must not echo.
+        /// </summary>
+        [HarmonyPatch(typeof(Player), "SetTaxRate")]
+        public class PlayerSetTaxRateHook
+        {
+            public static void Postfix(Player __instance, int landMass, float taxRate)
+            {
+                if (!NetClient.client.IsConnected || __instance == null || __instance != Player.inst) return;
+                if (landMass < 0) return;
+                try
+                {
+                    KaCMultiplayer.Net.NetRouter.Send(new KaCMultiplayer.Net.Messages.TaxRateMessage { LandMass = landMass, Rate = taxRate });
+                }
+                catch (Exception e) { Main.helper.Log("[TAX] broadcast error: " + e.Message); }
+            }
+        }
+
 
 
         // Make a launch-spawned ship carry the SAME guid on every machine, so ship-targeted packets
@@ -8301,6 +8337,57 @@ namespace KaCMultiplayer
                         new CodeInstruction(OpCodes.Ldarg_0),
                         new CodeInstruction(OpCodes.Call, ownerOf),
                     }, "GetPlayerByBuilding");
+            }
+        }
+
+        /// <summary>
+        /// Inside some building components, <c>Player.inst</c> means the kingdom that owns the
+        /// building, not the local one.
+        ///
+        /// These are components next to a Building, not Buildings, so the rewrite above never
+        /// reached them (the same gap CalcMaxGold fell through). Before this, every house in the
+        /// world was taxed at the local player's rate and sent its residents to the local homeless
+        /// list, every farm counted the local player's windmills for its bonus, and a full
+        /// blacksmith in another kingdom set off the local player's advisor. Each of these types
+        /// keeps its Building in a field named <c>b</c>, so load that and map it to the owner.
+        ///
+        /// Left alone on purpose: Home.ShowOverlay (whether the LOCAL overlay covers the house) and
+        /// Field's wheat drawing (remote farms are drawn by the local player's field system, the
+        /// only one that ticks, since cloned players' Update is suppressed).
+        /// </summary>
+        [HarmonyPatch]
+        public class ComponentOwnerReferencePatch
+        {
+            /// <summary>Type to method names, or null for every instance method on it.</summary>
+            private static readonly Dictionary<Type, string[]> Targets = new Dictionary<Type, string[]>
+            {
+                { typeof(Home), null },
+                { typeof(Field), new[] { "Tick", "DeferredYield", "RefreshBonuses" } },
+                { typeof(ProducerBasePlural), new[] { "DoYield", "CheckProductionPipeline" } },
+            };
+
+            static IEnumerable<MethodBase> TargetMethods()
+            {
+                foreach (var t in Targets)
+                    foreach (MethodBase m in SingletonRewrite.InstanceMethodsOf(t.Key, t.Key.Name + " owner transpiler"))
+                    {
+                        if (t.Value == null ? m.Name == "ShowOverlay" : !t.Value.Contains(m.Name)) continue;
+                        yield return m;
+                    }
+            }
+
+            static IEnumerable<CodeInstruction> Transpiler(MethodBase method, IEnumerable<CodeInstruction> instructions)
+            {
+                FieldInfo building = AccessTools.Field(method.DeclaringType, "b");
+                MethodInfo ownerOf = typeof(Main).GetMethod("GetPlayerByBuilding", BindingFlags.Static | BindingFlags.Public);
+
+                return SingletonRewrite.Apply(method, instructions,
+                    () => new[]
+                    {
+                        new CodeInstruction(OpCodes.Ldarg_0),
+                        new CodeInstruction(OpCodes.Ldfld, building),
+                        new CodeInstruction(OpCodes.Call, ownerOf),
+                    }, "GetPlayerByBuilding(b)");
             }
         }
 

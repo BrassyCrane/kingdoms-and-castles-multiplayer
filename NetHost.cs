@@ -95,6 +95,7 @@ namespace KaCMultiplayer
                     // and the send queue is shared: every one of those is taken out of the budget
                     // of the players still waiting for their own copy.
                     KaCMultiplayer.Net.SaveTransfer.Forget(ev.Client.Id);
+                    KaCMultiplayer.Net.KingdomMirror.Forget(ev.Client.Id);
 
                     // NetPlayers.ById returns null for an unknown client instead of throwing, so
                     // a messy disconnect no longer needs a swallowing try/catch here.
@@ -143,7 +144,10 @@ namespace KaCMultiplayer
                         Main.helper.Log($"[DISCONNECT] {leavingName} left mid-game, keeping their kingdom as a ghost (record preserved for consistency/reconnect).");
                     }
 
-                    LobbyView.RemovePlayer(ev.Client.Id);
+                    // Guests are told too, or their lists keep showing the player as here.
+                    // A leaver who owns a kingdom stays listed as a ghost.
+                    LobbyView.SyncRows();
+                    KaCMultiplayer.Net.SessionHandlers.BroadcastRoster();
 
                     // Losing a player mid-game pauses everyone. Their kingdom stops ticking the moment
                     // they go (it sits as a ghost, see above), so an unpaused world just keeps running

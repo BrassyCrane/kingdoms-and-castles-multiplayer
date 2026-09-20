@@ -35,6 +35,9 @@ namespace KaCMultiplayer.LoadSaveOverrides
         // True when the current session came from a loaded save (registry filled during Unpack).
         public static bool IsLoadedSession { get { return savedTeamBySteamId.Count > 0; } }
 
+        // How many kingdoms the loaded save holds. Shown in the saved-game lobby.
+        public static int SavedKingdomCount { get { return savedTeamBySteamId.Count; } }
+
         // Called during save Unpack, once per saved player, BEFORE any player data is applied.
         public static void RegisterSavedPlayer(string steamId, int teamId)
         {

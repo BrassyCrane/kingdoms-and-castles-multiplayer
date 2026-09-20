@@ -91,6 +91,15 @@ namespace KaCMultiplayer.Net
 
         public bool FogOfWar { get; set; }
 
+        /// <summary>The host is loading a saved game, so the world settings come from the save.</summary>
+        public bool SavedGame { get; set; }
+
+        /// <summary>The saved game's year, or 0 until the host has read the save.</summary>
+        public int SavedYear { get; set; }
+
+        /// <summary>How many kingdoms the save holds, or 0 until the host has read it.</summary>
+        public int SavedKingdoms { get; set; }
+
         public LobbySettings()
         {
             // Same defaults the packet class had. A single space for the password rather
@@ -133,6 +142,9 @@ namespace KaCMultiplayer.Net
             WorldRivers = other.WorldRivers;
             PlacementType = other.PlacementType;
             FogOfWar = other.FogOfWar;
+            SavedGame = other.SavedGame;
+            SavedYear = other.SavedYear;
+            SavedKingdoms = other.SavedKingdoms;
         }
 
         /// <summary>

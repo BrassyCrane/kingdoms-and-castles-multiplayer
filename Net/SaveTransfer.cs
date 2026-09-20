@@ -328,7 +328,11 @@ namespace KaCMultiplayer.Net
             // one moment it is guaranteed to happen.
             awaiting = m.TotalChunks < WindowChunks ? m.TotalChunks : WindowChunks;
 
-            try { LobbyScreen.LoadingPanel.SetActive(true); }
+            try
+            {
+                LobbyScreen.LoadingPanel.SetActive(true);
+                SetProgress(0f, "Waiting for the host");
+            }
             catch (Exception ex) { NetLog.Warn("save transfer: could not show the loading panel, " + ex.Message); }
 
             return true;
@@ -433,15 +437,29 @@ namespace KaCMultiplayer.Net
         {
             if (saveSize <= 0) return;
 
-            float fraction = (float)bytesReceived / saveSize;
+            SetProgress((float)bytesReceived / saveSize,
+                "Receiving the world, " + (bytesReceived / 1048576f).ToString("0.0") + " of " +
+                (saveSize / 1048576f).ToString("0.0") + " MB");
+        }
+
+        /// <summary>
+        /// Moves the loading bar and its text. The fill is stretched from the left edge to the
+        /// progress point rather than cropped, so its dim-to-bright fade always ends at the
+        /// leading edge. Hidden at zero, where a stretched sprite would have no width to draw.
+        /// </summary>
+        private static void SetProgress(float fraction, string status)
+        {
+            fraction = UnityEngine.Mathf.Clamp01(fraction);
 
             try
             {
-                LobbyScreen.ProgressFill.fillAmount = fraction;
-                LobbyScreen.ProgressLabel.text = (fraction * 100f).ToString("0.00") + "%";
-                LobbyScreen.StatusLabel.text =
-                    (bytesReceived / 1000f).ToString("0.00") + " KB / " +
-                    (saveSize / 1000f).ToString("0.00") + " KB";
+                UnityEngine.RectTransform fill = LobbyScreen.ProgressFill.rectTransform;
+                fill.anchorMax = new UnityEngine.Vector2(fraction, fill.anchorMax.y);
+                fill.gameObject.SetActive(fraction > 0.005f);
+                LobbyScreen.ProgressFill.fillAmount = 1f;   // older bundles used a cropped fill
+
+                LobbyScreen.ProgressLabel.text = UnityEngine.Mathf.FloorToInt(fraction * 100f) + "%";
+                LobbyScreen.StatusLabel.text = status;
             }
             catch
             {

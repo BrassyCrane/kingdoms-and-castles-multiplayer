@@ -207,7 +207,7 @@ namespace KaCMultiplayer.Net
         }
 
         /// <summary>Sends the host's full view of the roster to every client but itself.</summary>
-        private static void BroadcastRoster()
+        internal static void BroadcastRoster()
         {
             List<SessionPlayer> players = Main.kCPlayers.Values.OrderBy(p => p.id).ToList();
             if (players.Count == 0) return;
@@ -218,10 +218,12 @@ namespace KaCMultiplayer.Net
                 {
                     ClientId = p.id,
                     SteamId = p.steamId,
-                    Name = p.name,
+                    // A saved kingdom whose player has not joined has no session name yet.
+                    Name = string.IsNullOrEmpty(p.name) ? p.SteamPersona() : p.name,
                     KingdomName = p.kingdomName,
                     Banner = p.banner,
                     Ready = p.ready,
+                    Ghost = p.isGhost,
                     // The host's team assignment travels with the roster so no client has to
                     // re-derive it from a client id Riptide may have recycled.
                     TeamId = (p.inst != null && p.inst.PlayerLandmassOwner != null)
@@ -494,7 +496,7 @@ namespace KaCMultiplayer.Net
         /// </summary>
         private static void SyncFreshWorld(ushort clientId)
         {
-            NetRouter.Broadcast(new WorldSeedMessage { Seed = World.inst.seed }, NetClient.client.Id);
+            NetRouter.Broadcast(WorldSeedMessage.ForCurrentWorld(), NetClient.client.Id);
 
             // Only to the joiner: players already in the session have these, and a second
             // copy would duplicate them. The seed above is sent first, so the client

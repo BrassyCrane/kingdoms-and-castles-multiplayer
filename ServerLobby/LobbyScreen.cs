@@ -18,6 +18,14 @@ namespace KaCMultiplayer
         public static ServerRow serverDetails { get; set; }
 
         public static Transform RosterContent { get; set; }
+
+        // The saved-game layout: SaveInfo replaces the world settings and difficulty, and the
+        // headings change. Null when the bundle predates it, which leaves the lobby as it was.
+        private GameObject savedInfo, worldGroup, difficultyNode, difficultyCaption;
+        private TextMeshProUGUI titleLabel, playersHeader, worldHeader;
+        private TextMeshProUGUI infoYear, infoDifficulty, infoSize, infoKingdoms;
+        private string titleDefault, playersDefault, worldDefault;
+        private bool? layoutSaved;
         public static Transform ChatContent { get; set; }
 
         public static Button StartButton { get; set; }
@@ -247,6 +255,8 @@ namespace KaCMultiplayer
                 ProgressLabel = BindInChildren<TextMeshProUGUI>("LoadingSave/Window/ProgressBar");
                 StatusLabel = Bind<TextMeshProUGUI>("LoadingSave/Window/StatusText");
 
+                BindSavedGameLayout();
+
                 if (!NetHost.IsRunning)
                 {
                     // Guests can look but not touch: the host owns every setting, and anything
@@ -328,90 +338,8 @@ namespace KaCMultiplayer
 
                 RerollButton.onClick.AddListener(() =>
                 {
-                    if (NetHost.IsRunning)
-                    {
-                        try
-                        {
-
-                            // Guarded per player, because the whole reroll used to ride on every
-                            // one of them being fully built. A joiner whose kingdom object is still
-                            // being assembled has a null inst, and the throw did not just skip them:
-                            // it abandoned the loop, so every player after them kept their old
-                            // kingdom and its buildings survived onto the new map. Same shape as the
-                            // roster bug; one unready player should cost that player, not the reroll.
-                            int localTeam = (Player.inst != null && Player.inst.PlayerLandmassOwner != null)
-                                ? Player.inst.PlayerLandmassOwner.teamId : int.MinValue;
-
-                            foreach (var player in Main.kCPlayers.Values)
-                            {
-                                try
-                                {
-                                    if (player == null || player.inst == null
-                                        || player.inst.PlayerLandmassOwner == null) continue;
-                                    // The local player used to be skipped here, on the assumption
-                                    // that the game resets its own Player. It does not on a map
-                                    // reroll, so the host's previous kingdom survived into the new
-                                    // world: after loading a save and then rerolling, the old city
-                                    // was still standing on the new map, an orphaned ghost town the
-                                    // player owned nothing of ("I just made this world and this
-                                    // kingdom was already here"). Every kingdom is cleared now.
-                                    //
-                                    // Safe to include ourselves because ResetKingdomSafely holds
-                                    // the world's cave container out of Reset's reach; calling
-                                    // Reset directly is what broke harvesting across the session.
-                                    Main.ResetKingdomSafely(player.inst);
-                                }
-                                catch (Exception ex)
-                                {
-                                    Main.LogEx("resetting a kingdom for the map reroll", ex);
-                                }
-                            }
-
-                            Main.helper.Log("new world button");
-                            World.inst.Generate();
-
-                            // The published browser thumbnail is cached; the map just changed.
-                            MapThumbnail.Invalidate();
-                            SeedBox.text = World.inst.GetTextSeed();
-                            mapPreviewDirty = true;
-
-                            // A new map can have fewer islands than the last, leaving the
-                            // player limit above what it can seat. Nothing else would notice,
-                            // so re-clamp here and correct the field.
-                            if (LobbySettings.Current.ClampToWorld())
-                            {
-                                SeatsBox.text = LobbySettings.Current.MaxPlayers.ToString();
-                                Main.helper.Log($"[lobby] max players reduced to {LobbySettings.Current.MaxPlayers} ({World.inst.NumLandMasses} islands on the new map)");
-                            }
-
-                            // Guarded per player, and this one matters more than it looks: the
-                            // broadcast below is inside the same try, so a single player with a
-                            // half-built kingdom used to abort this whole block and the NEW WORLD
-                            // SEED never went out. Every client would keep the old map while the
-                            // host looked at the new one, with nothing logged to say why.
-                            foreach (var player in Main.kCPlayers.Values)
-                            {
-                                try
-                                {
-                                    if (player != null && player.inst != null)
-                                        player.inst.SetupJobPriorities();
-                                }
-                                catch (Exception ex)
-                                {
-                                    Main.LogEx("setting up job priorities after a reroll", ex);
-                                }
-                            }
-
-                            NetRouter.Broadcast(new WorldSeedMessage
-                            {
-                                Seed = World.inst.seed
-                            }, NetClient.client.Id);
-                        }
-                        catch (Exception ex)
-                        {
-                            Main.LogEx("LobbyScreen.Awake (world seed broadcast)", ex);
-                        }
-                    }
+                    // A brand new map. Seed 0 asks the game to pick a random one.
+                    if (NetHost.IsRunning) RegenerateWorld(0, "new world button");
                 });
 
                 // Once immediately so the lobby is not blank for the first second, then on a
@@ -435,6 +363,82 @@ namespace KaCMultiplayer
             {
                 Main.LogEx("LobbyScreen.Awake", ex);
             }
+        }
+
+        /// <summary>
+        /// Finds the saved-game layout's nodes. Missing nodes mean an older bundle, which simply
+        /// keeps the normal layout, so nothing here is allowed to throw out of Awake.
+        /// </summary>
+        private void BindSavedGameLayout()
+        {
+            try
+            {
+                const string settings = "Container/ServerSettings/";
+                Transform info = transform.Find(settings + "SaveInfo");
+                if (info == null) return;
+
+                savedInfo = info.gameObject;
+                worldGroup = Node(settings + "WorldSettings").gameObject;
+                difficultyNode = Node(settings + "Difficulty").gameObject;
+                difficultyCaption = Node(settings + "Caption_Difficulty").gameObject;
+
+                titleLabel = Bind<TextMeshProUGUI>("Container/Title");
+                playersHeader = Bind<TextMeshProUGUI>("Container/Header_Players");
+                worldHeader = Bind<TextMeshProUGUI>("Container/Header_World");
+                titleDefault = titleLabel.text;
+                playersDefault = playersHeader.text;
+                worldDefault = worldHeader.text;
+
+                infoYear = Bind<TextMeshProUGUI>(settings + "SaveInfo/InfoYear");
+                infoDifficulty = Bind<TextMeshProUGUI>(settings + "SaveInfo/InfoDifficulty");
+                infoSize = Bind<TextMeshProUGUI>(settings + "SaveInfo/InfoSize");
+                infoKingdoms = Bind<TextMeshProUGUI>(settings + "SaveInfo/InfoKingdoms");
+                layoutSaved = null;
+            }
+            catch (Exception ex)
+            {
+                savedInfo = null;
+                Main.LogEx("binding the saved-game lobby layout", ex);
+            }
+        }
+
+        /// <summary>
+        /// Shows the saved-game layout while the host is loading a save: nothing about the world
+        /// can be changed then, so the world settings give way to what the save holds, and the
+        /// player list becomes the save's kingdoms (see PlayerRow). Runs every settings tick, on
+        /// the host and on guests, from LobbySettings.SavedGame.
+        /// </summary>
+        private void ApplySavedGameLayout(LobbySettings s)
+        {
+            if (savedInfo == null) return;
+            bool saved = s.SavedGame;
+
+            if (layoutSaved != saved)
+            {
+                layoutSaved = saved;
+                savedInfo.SetActive(saved);
+                worldGroup.SetActive(!saved);
+                difficultyNode.SetActive(!saved);
+                difficultyCaption.SetActive(!saved);
+                titleLabel.text = saved ? "Saved Game Lobby" : titleDefault;
+                playersHeader.text = saved ? "Kingdoms" : playersDefault;
+                worldHeader.text = saved ? "Saved World" : worldDefault;
+            }
+
+            if (!saved) return;
+
+            const string notYet = "...";
+            infoYear.text = s.SavedYear > 0 ? s.SavedYear.ToString() : notYet;
+            infoDifficulty.text = s.SavedYear > 0 ? KaCMultiplayer.Lobby.GameDifficultyExtensions.Label(s.Difficulty) : notYet;
+
+            int size = (int)s.WorldSize;
+            infoSize.text = (s.SavedYear > 0 && size >= 0 && size < SizePicker.options.Count)
+                ? SizePicker.options[size].text : notYet;
+
+            int ghosts = Main.kCPlayers.Values.Count(p => p.isGhost);
+            infoKingdoms.text = s.SavedKingdoms > 0
+                ? Math.Max(0, s.SavedKingdoms - ghosts) + " of " + s.SavedKingdoms
+                : notYet;
         }
 
         /// <summary>
@@ -516,6 +520,9 @@ namespace KaCMultiplayer
                     ReadSettingsFromControls();
                 else
                     ShowSettingsFromHost();
+
+                ApplySavedGameLayout(LobbySettings.Current);
+                KaCMultiplayer.Lobby.LobbyView.SyncRows();
 
                 // Rebuild the map preview after a (re)generation, once the lobby UI exists.
                 if (mapPreviewDirty && BrowserScreen.serverLobbyRef != null)
@@ -620,6 +627,10 @@ namespace KaCMultiplayer
 
             ApplyWorldSettings(s);
 
+            // A changed setting means a changed map. See RegenerateIfStale. Not while a save is
+            // being loaded: the save decides the world then, and its controls are locked.
+            if (canEditWorld) RegenerateIfStale(s);
+
             // Ghosts are saved players who have not reconnected to this loaded game. They must
             // not block Start, the host can resume without them, and they take their kingdom
             // back when they rejoin. Skip(1) is the host's own entry.
@@ -627,8 +638,177 @@ namespace KaCMultiplayer
                 .Skip(1).Where(p => !p.isGhost).All(p => p.ready);
             RerollButton.interactable = canEditWorld;
 
+            s.SavedGame = !canEditWorld;
+            bool saveRead = s.SavedGame && KaCMultiplayer.LoadSaveOverrides.LoadIdentity.IsLoadedSession;
+            s.SavedYear = (saveRead && Player.inst != null) ? Player.inst.CurrYear : 0;
+            s.SavedKingdoms = saveRead ? KaCMultiplayer.LoadSaveOverrides.LoadIdentity.SavedKingdomCount : 0;
+
             if (Main.kCPlayers.Count > 0)
                 NetRouter.Broadcast(LobbySettingsMessage.From(s), NetClient.client.Id);
+        }
+
+        /// <summary>
+        /// Host only: rebuilds the world from <paramref name="seed"/> (0 for a random one) with the
+        /// lobby's current settings, clears every kingdom off the old map, and sends the result to
+        /// every guest.
+        ///
+        /// The one path for both the New World button and a changed setting. It used to live
+        /// inside the button's click handler, and changing Size, Rivers or the seed never reached
+        /// it at all: the host went on looking at a map built with the OLD settings while a guest
+        /// built the new ones, so the two saw different islands.
+        /// </summary>
+        private static void RegenerateWorld(int seed, string why)
+        {
+            try
+            {
+                // Guarded per player, because the whole reroll used to ride on every
+                // one of them being fully built. A joiner whose kingdom object is still
+                // being assembled has a null inst, and the throw did not just skip them:
+                // it abandoned the loop, so every player after them kept their old
+                // kingdom and its buildings survived onto the new map. Same shape as the
+                // roster bug; one unready player should cost that player, not the reroll.
+                int localTeam = (Player.inst != null && Player.inst.PlayerLandmassOwner != null)
+                    ? Player.inst.PlayerLandmassOwner.teamId : int.MinValue;
+
+                foreach (var player in Main.kCPlayers.Values)
+                {
+                    try
+                    {
+                        if (player == null || player.inst == null
+                            || player.inst.PlayerLandmassOwner == null) continue;
+                        // The local player used to be skipped here, on the assumption
+                        // that the game resets its own Player. It does not on a map
+                        // reroll, so the host's previous kingdom survived into the new
+                        // world: after loading a save and then rerolling, the old city
+                        // was still standing on the new map, an orphaned ghost town the
+                        // player owned nothing of ("I just made this world and this
+                        // kingdom was already here"). Every kingdom is cleared now.
+                        //
+                        // Safe to include ourselves because ResetKingdomSafely holds
+                        // the world's cave container out of Reset's reach; calling
+                        // Reset directly is what broke harvesting across the session.
+                        Main.ResetKingdomSafely(player.inst);
+                    }
+                    catch (Exception ex)
+                    {
+                        Main.LogEx("resetting a kingdom for the map reroll", ex);
+                    }
+                }
+
+                Main.helper.Log("[lobby] regenerating the world (" + why + ")"
+                                + (seed != 0 ? ", seed " + seed : ", new random seed"));
+                World.inst.Generate(seed);
+
+                // The published browser thumbnail is cached; the map just changed.
+                MapThumbnail.Invalidate();
+                SeedBox.text = World.inst.GetTextSeed();
+                mapPreviewDirty = true;
+
+                // A new map can have fewer islands than the last, leaving the
+                // player limit above what it can seat. Nothing else would notice,
+                // so re-clamp here and correct the field.
+                if (LobbySettings.Current.ClampToWorld())
+                {
+                    SeatsBox.text = LobbySettings.Current.MaxPlayers.ToString();
+                    Main.helper.Log($"[lobby] max players reduced to {LobbySettings.Current.MaxPlayers} ({World.inst.NumLandMasses} islands on the new map)");
+                }
+
+                // Guarded per player, and this one matters more than it looks: the
+                // broadcast below is inside the same try, so a single player with a
+                // half-built kingdom used to abort this whole block and the NEW WORLD
+                // SEED never went out. Every client would keep the old map while the
+                // host looked at the new one, with nothing logged to say why.
+                foreach (var player in Main.kCPlayers.Values)
+                {
+                    try
+                    {
+                        if (player != null && player.inst != null)
+                            player.inst.SetupJobPriorities();
+                    }
+                    catch (Exception ex)
+                    {
+                        Main.LogEx("setting up job priorities after a reroll", ex);
+                    }
+                }
+
+                NetRouter.Broadcast(WorldSeedMessage.ForCurrentWorld(), NetClient.client.Id);
+            }
+            catch (Exception ex)
+            {
+                Main.LogEx("regenerating the lobby world (" + why + ")", ex);
+            }
+        }
+
+        /// <summary>The settings key last regenerated for, so a mismatch the game refuses to fix is tried once, not every second.</summary>
+        private static string lastRegeneratedFor;
+
+        /// <summary>
+        /// Host only, every lobby tick: regenerates the world if it no longer matches what the
+        /// lobby shows.
+        ///
+        /// Compared against World's generated* fields, which record what the current map was
+        /// ACTUALLY built with, so this cannot be fooled by a picker and a world that merely look
+        /// alike. "Random" never counts as a mismatch: the map was built with some concrete value
+        /// for it, and treating that as stale would regenerate forever.
+        ///
+        /// A typed seed is only acted on once the seed box has lost focus, so typing a number
+        /// does not rebuild the world once per keystroke. Anything that does not parse as a seed is
+        /// replaced by the seed the map really has.
+        /// </summary>
+        private static void RegenerateIfStale(LobbySettings s)
+        {
+            if (World.inst == null || SeedBox == null) return;
+
+            int seed = World.inst.seed;
+            string why = null;
+
+            string current = World.inst.GetTextSeed();
+            if (!SeedBox.isFocused && SeedBox.text != current)
+            {
+                int typed;
+                if (TryParseSeed(SeedBox.text, out typed) && typed != World.inst.seed)
+                {
+                    seed = typed;
+                    why = "seed typed";
+                }
+                else
+                {
+                    SeedBox.text = current;
+                }
+            }
+
+            if (why == null && s.WorldSize != World.MapSize.Random && s.WorldSize != World.inst.generatedMapSize)
+                why = "size changed";
+            if (why == null && s.WorldRivers != World.MapRiverLakes.Random && s.WorldRivers != World.inst.generatedRiverLakes)
+                why = "rivers changed";
+            if (why == null && s.WorldType != World.MapBias.Random && s.WorldType != World.inst.generatedMapsBias)
+                why = "world type changed";
+
+            if (why == null) return;
+
+            string key = seed + "/" + s.WorldType + "/" + s.WorldSize + "/" + s.WorldRivers;
+            if (key == lastRegeneratedFor)
+            {
+                return;   // already tried exactly this; the log line from that attempt says why it did not take
+            }
+            lastRegeneratedFor = key;
+
+            RegenerateWorld(seed, why);
+        }
+
+        /// <summary>
+        /// Reads a seed as the game writes one: letters for the settings, then the number
+        /// (e.g. "ISN123456789"). Only the number is taken; the pickers own the settings.
+        /// </summary>
+        private static bool TryParseSeed(string text, out int seed)
+        {
+            seed = 0;
+            if (string.IsNullOrEmpty(text)) return false;
+
+            int i = 0;
+            while (i < text.Length && !char.IsDigit(text[i])) i++;
+
+            return i < text.Length && int.TryParse(text.Substring(i).Trim(), out seed) && seed > 0;
         }
 
         /// <summary>

@@ -81,6 +81,9 @@ namespace KaCMultiplayer.Dev
             IslandsAreStaffedByTheirOwner();
             SnapshotCommissionsABuilding();
             DragonIdsAreUnique();
+            TaxRatesReachTheirKingdom();
+            RosterKeepsKingdomObjects();
+            HomelessListsBelongToTheirKingdom();
         }
 
         // ---- CLASS 1: A PER-LANDMASS ARRAY SIZED BEFORE THE MAP EXISTED -------------------
@@ -852,6 +855,155 @@ namespace KaCMultiplayer.Dev
             }
         }
 
+        // ---- HOUSING --------------------------------------------------------------------
+
+        /// <summary>
+        /// No kingdom's homeless list holds a villager who has a house, or somebody else's villager.
+        ///
+        /// Both happen when vanilla code that reads the local player runs for another kingdom, and
+        /// both are expensive: the homelessness penalty counts villagers with no house, and only a
+        /// kingdom's own machine re-houses the people on its own list, so a villager filed under the
+        /// wrong kingdom is homeless for the rest of the session. This is the runtime half of the
+        /// save repair in SessionSave.RepairHousing.
+        /// </summary>
+        private static void HomelessListsBelongToTheirKingdom()
+        {
+            try
+            {
+                int housed = 0, foreign = 0, dead = 0;
+
+                foreach (SessionPlayer kp in Main.kCPlayers.Values)
+                {
+                    Player p = (kp == null) ? null : kp.inst;
+                    if (p == null || p.Workers == null || p.Homeless == null) continue;
+
+                    HashSet<Villager> ours = new HashSet<Villager>();
+                    for (int i = 0; i < p.Workers.Count; i++)
+                    {
+                        Villager w = p.Workers.data[i];
+                        if (w == null) continue;
+
+                        ours.Add(w);
+
+                        // A villager killed on another machine whose death was applied to the wrong
+                        // kingdom stays here as a corpse, and goes on counting against happiness.
+                        if (IsShutDown(w)) dead++;
+                    }
+
+                    for (int i = 0; i < p.Homeless.Count; i++)
+                    {
+                        Villager v = p.Homeless.data[i];
+                        if (v == null) continue;
+
+                        if (!ours.Contains(v)) foreign++;
+                        else if (v.Residence != null) housed++;
+                    }
+                }
+
+                check("no kingdom lists a housed villager as homeless", housed == 0);
+                check("no kingdom lists another kingdom's villager as homeless", foreign == 0);
+                check("no kingdom still counts a dead villager among its workers", dead == 0);
+            }
+            catch (Exception ex)
+            {
+                check("the homeless list check finished without throwing", false);
+                Main.LogEx("[SELFTEST] homeless lists", ex);
+            }
+        }
+
+        // ---- ROSTER ---------------------------------------------------------------------
+
+        /// <summary>
+        /// A roster message updates the player registry in place.
+        ///
+        /// It used to wipe the registry and build every remote player again, with a new, empty
+        /// Player object, so the kingdoms a guest had already unpacked lost their owner whenever
+        /// someone else joined. Sends the current roster back through the real handler and checks
+        /// every kingdom object survived, then that the ghost flag travels.
+        /// </summary>
+        private static void RosterKeepsKingdomObjects()
+        {
+            try
+            {
+                SessionPlayer peer = FindAnyPeer();
+                if (peer == null) { log("no peer kingdom, skipping the roster check"); return; }
+
+                Dictionary<string, Player> before = new Dictionary<string, Player>();
+                foreach (var kv in Main.kCPlayers) before[kv.Key] = kv.Value.inst;
+
+                PeerRosterMessage roster = new PeerRosterMessage();
+                foreach (SessionPlayer p in Main.kCPlayers.Values)
+                    roster.Players.Add(new PeerRosterMessage.Entry
+                    {
+                        ClientId = p.id, SteamId = p.steamId, Name = p.name, KingdomName = p.kingdomName,
+                        Banner = p.banner, Ready = p.ready, Ghost = p == peer,
+                        TeamId = p.inst.PlayerLandmassOwner.teamId
+                    });
+
+                using (NetApply.Scope())
+                    NetRegistrations.ApplyRoster(roster);
+
+                bool same = before.Count == Main.kCPlayers.Count;
+                foreach (var kv in before)
+                    same &= Main.kCPlayers.ContainsKey(kv.Key) && Main.kCPlayers[kv.Key].inst == kv.Value;
+
+                check("a roster keeps every kingdom's Player object", same);
+                check("a roster marks a player who is not connected as a ghost", peer.isGhost);
+
+                peer.isGhost = false;
+            }
+            catch (Exception ex)
+            {
+                check("the roster check finished without throwing", false);
+                Main.LogEx("[SELFTEST] roster", ex);
+            }
+        }
+
+        // ---- TAX ------------------------------------------------------------------------
+
+        /// <summary>
+        /// Another kingdom's tax rate lands on that kingdom, and only that kingdom.
+        ///
+        /// Rates live on each Player object and were never sent anywhere, so the host saved 0 for
+        /// every guest. Drives the real apply path with the peer as sender, then checks a bad rate
+        /// from the wire is refused. The peer's rate is put back afterwards so the save round trip
+        /// later in the run sees the session as it was.
+        /// </summary>
+        private static void TaxRatesReachTheirKingdom()
+        {
+            try
+            {
+                SessionPlayer peer = FindAnyPeer();
+                if (peer == null || peer.inst.PlayerLandmassOwner == null
+                    || peer.inst.PlayerLandmassOwner.ownedLandMasses.Count == 0)
+                {
+                    log("no peer kingdom with land, skipping the tax check");
+                    return;
+                }
+
+                int lm = peer.inst.PlayerLandmassOwner.ownedLandMasses.data[0];
+                float peerBefore = peer.inst.GetTaxRate(lm);
+                float localBefore = Player.inst.GetTaxRate(lm);
+
+                using (NetApply.Scope())
+                {
+                    NetRegistrations.ApplyTaxRate(new TaxRateMessage { Origin = peer.id, LandMass = lm, Rate = 1.5f });
+                    check("a peer's tax rate is set on the peer's kingdom", peer.inst.GetTaxRate(lm) == 1.5f);
+                    check("a peer's tax rate leaves the local kingdom alone", Player.inst.GetTaxRate(lm) == localBefore);
+
+                    NetRegistrations.ApplyTaxRate(new TaxRateMessage { Origin = peer.id, LandMass = lm, Rate = 99f });
+                    check("an out-of-range tax rate from the wire is refused", peer.inst.GetTaxRate(lm) == 1.5f);
+
+                    peer.inst.SetTaxRate(lm, peerBefore);
+                }
+            }
+            catch (Exception ex)
+            {
+                check("the tax rate check finished without throwing", false);
+                Main.LogEx("[SELFTEST] tax rates", ex);
+            }
+        }
+
         // ---- SHARED HELPERS -------------------------------------------------------------
 
         /// <summary>
@@ -867,6 +1019,25 @@ namespace KaCMultiplayer.Dev
                 if (kp != null && kp.inst != null && kp.inst != Player.inst) return kp;
 
             return null;
+        }
+
+        /// <summary>
+        /// Whether a villager has been shut down, which is the game's word for dead.
+        ///
+        /// Reflected because the field is internal to the game's assembly. Cached, because this
+        /// runs once per villager per check and a lookup per villager is the difference between a
+        /// check and a stall.
+        /// </summary>
+        private static FieldInfo villagerShutdown;
+
+        private static bool IsShutDown(Villager v)
+        {
+            if (villagerShutdown == null)
+                villagerShutdown = typeof(Villager).GetField("shutdown",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+            if (villagerShutdown == null) return false;   // a game update renamed it; do not fail over that
+            return (bool)villagerShutdown.GetValue(v);
         }
 
         /// <summary>Reads a field whether the game declares it public or private.</summary>

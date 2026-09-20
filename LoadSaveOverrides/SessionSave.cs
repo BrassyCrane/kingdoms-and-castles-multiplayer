@@ -119,6 +119,38 @@ namespace KaCMultiplayer.LoadSaveOverrides
             return ss;
         }
 
+        /// <summary>
+        /// One kingdom, for the save. Another player's own copy of it when they have sent one,
+        /// this machine's copy otherwise.
+        ///
+        /// WHY THE OWNER'S COPY WINS. This machine's copy of somebody else's kingdom is a parallel
+        /// simulation: its Player object never runs Update, so its resource totals are never
+        /// recomputed and nothing ever takes its villagers off the homeless list, and no message
+        /// carries what is inside their granaries. Saving that copy handed a rejoining player a
+        /// kingdom with no resources and a town full of homeless villagers, which is the report
+        /// this exists to answer. See Net/KingdomMirror.cs.
+        ///
+        /// Falls back rather than failing: a player who has just joined has not sent one yet, and
+        /// a stale or missing copy still has to produce a save.
+        /// </summary>
+        private Player.PlayerSaveData PackKingdom(SessionPlayer player)
+        {
+            if (player.steamId != Main.PlayerSteamID)
+            {
+                float age;
+                Player.PlayerSaveData theirs = KaCMultiplayer.Net.KingdomMirror.For(player.steamId, out age);
+                if (theirs != null)
+                {
+                    Main.helper.Log($"save: using {player.name}'s own copy of their kingdom ({age:0}s old)");
+                    return theirs;
+                }
+
+                Main.helper.Log($"save: no copy from {player.name} yet, packing this machine's view of their kingdom");
+            }
+
+            return new Player.PlayerSaveData().Pack(player.inst);
+        }
+
         public override LoadSaveContainer Pack(object obj)
         {
             this.CameraSaveData = new Cam.CamSaveData().Pack(Cam.inst);
@@ -134,7 +166,7 @@ namespace KaCMultiplayer.LoadSaveOverrides
                 // recoverable; a hung session is not.
                 try
                 {
-                    this.players.Add(player.steamId, new Player.PlayerSaveData().Pack(player.inst));
+                    this.players.Add(player.steamId, PackKingdom(player));
                 }
                 catch (Exception e)
                 {
@@ -176,6 +208,12 @@ namespace KaCMultiplayer.LoadSaveOverrides
 
             // Other mods' data. Not ours to interpret, carried through as-is.
             this.CustomSaveData = LoadSave.CustomSaveData_DontAccessDirectly;
+
+            // Ask everyone for a fresh copy of their kingdom for the NEXT save. Asking now rather
+            // than when the save starts is what keeps a kingdom being packed once per save instead
+            // of the save waiting on a transfer it cannot wait for: an autosave runs inside the
+            // season change and has to finish on the spot.
+            KaCMultiplayer.Net.KingdomMirror.RequestFromEveryone();
 
             return this;
         }
@@ -343,6 +381,11 @@ namespace KaCMultiplayer.LoadSaveOverrides
                 if (!string.IsNullOrWhiteSpace(finalName))
                     TownNameUI.inst.SetTownNameQuiet(finalName);
 
+                // The lobby's map preview still shows the world from before the load.
+                LobbyScreen.mapPreviewDirty = true;
+
+                RepairHousing();
+
                 return result;
             }
             finally
@@ -492,6 +535,85 @@ namespace KaCMultiplayer.LoadSaveOverrides
         }
 
         /// <summary>Restores every saved kingdom except the local one, which base.Unpack did.</summary>
+        /// <summary>
+        /// Makes every kingdom's houses, residents and homeless list agree with each other.
+        ///
+        /// WHY THIS EXISTS. A save written before kingdom copies (see Net/KingdomMirror.cs), or one
+        /// where a copy never arrived, holds the SAVER's view of somebody else's town. In that view
+        /// a villager can be homeless while their house lists them as a resident, and a villager of
+        /// one kingdom can sit in another kingdom's homeless list, because the vanilla code that
+        /// adds them reads the local player wherever it runs.
+        ///
+        /// Both cost the owner real happiness for as long as the session lasts: the homelessness
+        /// penalty counts villagers with no house, and only a kingdom's OWN machine ever re-houses
+        /// them, and it can only do that for the villagers on its own list. Three lines of tidying
+        /// here save a town from a permanent debuff it can do nothing about.
+        ///
+        /// Repairs rather than rebuilds: a villager who genuinely has no house stays homeless, and
+        /// the game houses them itself as houses come free.
+        /// </summary>
+        private void RepairHousing()
+        {
+            int reclaimed = 0, unlisted = 0, relisted = 0;
+
+            try
+            {
+                foreach (SessionPlayer player in Main.kCPlayers.Values)
+                {
+                    Player p = (player == null) ? null : player.inst;
+                    if (p == null || p.Workers == null || p.Homeless == null) continue;
+
+                    // A house knows its residents; a villager restored without a Residence is the
+                    // same person seen from the other side.
+                    if (p.ResidentialsPerLandmass != null)
+                    {
+                        for (int lm = 0; lm < p.ResidentialsPerLandmass.Length; lm++)
+                        {
+                            ArrayExt<Home> homes = p.ResidentialsPerLandmass[lm];
+                            if (homes == null) continue;
+
+                            for (int h = 0; h < homes.Count; h++)
+                            {
+                                Home home = homes.data[h];
+                                if (home == null || home.Residents == null) continue;
+
+                                for (int r = 0; r < home.Residents.Count; r++)
+                                {
+                                    Villager resident = home.Residents[r];
+                                    if (resident == null || resident.Residence != null) continue;
+
+                                    resident.Residence = home;
+                                    reclaimed++;
+                                }
+                            }
+                        }
+                    }
+
+                    // Whose villager is this? Anyone on this list who is not one of this kingdom's
+                    // workers belongs to another kingdom and was filed here by vanilla code reading
+                    // the local player.
+                    HashSet<Villager> ours = new HashSet<Villager>();
+                    for (int i = 0; i < p.Workers.Count; i++)
+                        if (p.Workers.data[i] != null) ours.Add(p.Workers.data[i]);
+
+                    for (int i = p.Homeless.Count - 1; i >= 0; i--)
+                    {
+                        Villager v = p.Homeless.data[i];
+                        if (v == null) { p.Homeless.RemoveAtSwap(i); continue; }
+
+                        if (!ours.Contains(v)) { p.Homeless.RemoveAtSwap(i); unlisted++; continue; }
+                        if (v.Residence != null) { p.Homeless.RemoveAtSwap(i); relisted++; }
+                    }
+                }
+
+                if (reclaimed + unlisted + relisted > 0)
+                    Main.helper.Log($"[LOAD] housing repaired: {reclaimed} villager(s) given back the house that "
+                                    + $"lists them, {relisted} housed villager(s) taken off a homeless list, "
+                                    + $"{unlisted} villager(s) removed from another kingdom's homeless list");
+            }
+            catch (Exception e) { Main.LogEx("repairing housing after a load", e); }
+        }
+
         private void RestoreOtherKingdoms(string localSteamId)
         {
             foreach (var kvp in players)
