@@ -29,16 +29,11 @@ and disagree. The pattern is the same one already used for barracks and for trad
 kingdom's own machine decides, everyone else applies what it broadcasts.
 
 Done on `dev`, waiting on a real two machine test: housing and immigration, `IsPlayerBuilding`,
-the kingdom log filter, and the pink ships.
+the kingdom log filter, the pink ships, and the host's lobby screen staying alive under the game.
 
 - **Job assignment.** `Job.UpdateAssignment` has the same shape. Careful with the trade: gating it
   means another player's production buildings get no workers in our copy, so their stores read
   empty here, which is the same gap that made tribute pay the wrong amount.
-
-## Smaller, and each one visible to players
-
-- **The host's own lobby UI is never hidden when the session starts.** Guests get the transition,
-  the host's screen stays alive underneath the game.
 
 ## Not synced yet, and each one is a way for two machines to drift apart
 

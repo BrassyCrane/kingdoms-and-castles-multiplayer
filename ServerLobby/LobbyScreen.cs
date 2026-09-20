@@ -296,6 +296,14 @@ namespace KaCMultiplayer
 
                         NetRouter.Broadcast(new SessionStartMessage());
 
+                        // Broadcast goes to the clients only, and SessionStartMessage's handler is
+                        // registered OnClient, so the host was the one machine nobody told the
+                        // session had started. Its lobby object stayed active underneath the game
+                        // for the whole session, which left this screen's Update still claiming
+                        // the Return key that in-game chat wants. Same transition the clients
+                        // make, so host and guest leave the lobby the same way.
+                        Main.TransitionTo(MenuState.LeaveMenus);
+
                         if (PlacementPicker.value != 0 || SteamLobby.loadingSave)
                             return;
 
