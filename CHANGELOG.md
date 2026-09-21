@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.15.1
 
 - Only a kingdom's own game settles people into its houses, so immigration no longer runs past
   the housing cap and villagers are no longer left homeless for good. Reported by BlueJay.
