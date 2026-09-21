@@ -85,6 +85,8 @@ namespace KaCMultiplayer.Dev
             RosterKeepsKingdomObjects();
             HomelessListsBelongToTheirKingdom();
             HousingDecisionsBelongToTheOwner();
+            EvictionsGoToTheHouseOwner();
+            AbandonedPathsAreClosed();
         }
 
         // ---- CLASS 1: A PER-LANDMASS ARRAY SIZED BEFORE THE MAP EXISTED -------------------
@@ -374,48 +376,14 @@ namespace KaCMultiplayer.Dev
                 }
                 owner = peer.inst;
 
-                Building keep = owner.keep.GetComponent<Building>();
-                if (keep == null) { log("the keep has no Building component, skipping"); return; }
-
-                Cell site = World.inst.GetCellDataClamped(keep.transform.position + new Vector3(4f, 0f, 0f));
-                if (site == null) { log("no site for the snapshot fixture, skipping"); return; }
-
                 int skippedBefore = Main.BuildingCompleteBuildHook.SkippedRecompletes;
 
                 // A farm on purpose. It is the building where an uncommissioned completion is
                 // worst (no HarvesterJob, so it is worked and never harvested) and it is the one
-                // the original report was about.
-                //
-                // Placed UNDER CONSTRUCTION and privately, which is the state a peer's snapshot
-                // arrives into. Scope() keeps the fixture off the wire; this check is about what a
-                // receiver does with a snapshot, not about sending one.
-                // Player.inst aimed at the peer for placement, the same discipline FakePeer uses
-                // for its own keep and dock, so the farm lands in the peer's registries.
-                Player previous = Player.inst;
-                try
-                {
-                    Player.inst = owner;
-                    using (NetApply.Scope())
-                    {
-                        b = UnityEngine.Object.Instantiate<Building>(
-                            GameState.inst.GetPlaceableByUniqueName("farm"));
-                        b.Init();
-                        b.transform.position = site.Position;
-                        b.SendMessage("OnPlayerPlacement", SendMessageOptions.DontRequireReceiver);
-                        World.inst.Place(b);
-                    }
-                }
-                finally { Player.inst = previous; }
-
-                // A farm needs ground a farm will accept, and Place does not promise to take it.
-                // Checked the same way the host build fixture checks its own placement, so a site
-                // the game refused is reported as an absent fixture rather than as a failed
-                // invariant.
-                if (Main.FindBuildingByGuidAnywhere(b.guid) == null)
-                {
-                    log("the snapshot fixture did not take at " + site.Position + ", skipping");
-                    return;
-                }
+                // the original report was about. Placed under construction, the state a peer's
+                // snapshot arrives into.
+                b = PlacePeerFixture(owner, "farm");
+                if (b == null) return;
 
                 if (b.IsBuilt())
                 {
@@ -457,16 +425,7 @@ namespace KaCMultiplayer.Dev
                 // by every later check, including the save round trip.
                 try
                 {
-                    if (b != null)
-                    {
-                        Player previous = Player.inst;
-                        try
-                        {
-                            if (owner != null) Player.inst = owner;
-                            using (NetApply.Scope()) World.inst.DemolishBuilding(b, false);
-                        }
-                        finally { Player.inst = previous; }
-                    }
+                    RemovePeerFixture(owner, b);
                 }
                 catch (Exception ex) { Main.LogEx("[SELFTEST] clearing the snapshot fixture", ex); }
             }
@@ -1032,6 +991,177 @@ namespace KaCMultiplayer.Dev
                 Main.LogEx("[SELFTEST] housing ownership", ex);
             }
         }
+
+        /// <summary>
+        /// Places a building for another kingdom beside its keep, off the wire, or null (with the
+        /// reason logged) when the site refused it. Player.inst is aimed at the owner for the
+        /// placement, the discipline FakePeer uses for its own keep and dock, so the building lands
+        /// in the owner's registries the way a peer's building does on this machine.
+        /// </summary>
+        private static Building PlacePeerFixture(Player owner, string uniqueName)
+        {
+            Building keep = owner.keep.GetComponent<Building>();
+            if (keep == null) { log("the peer's keep has no Building component, skipping"); return null; }
+
+            Cell site = World.inst.GetCellDataClamped(keep.transform.position + new Vector3(4f, 0f, 0f));
+            if (site == null) { log("no site for a " + uniqueName + " fixture, skipping"); return null; }
+
+            Building b;
+            Player previous = Player.inst;
+            try
+            {
+                Player.inst = owner;
+                using (NetApply.Scope())
+                {
+                    b = UnityEngine.Object.Instantiate<Building>(GameState.inst.GetPlaceableByUniqueName(uniqueName));
+                    b.Init();
+                    b.transform.position = site.Position;
+                    b.SendMessage("OnPlayerPlacement", SendMessageOptions.DontRequireReceiver);
+                    World.inst.Place(b);
+                }
+            }
+            finally { Player.inst = previous; }
+
+            // Place does not promise to take the site. A refusal is an absent fixture, reported
+            // as such, not a failed invariant.
+            if (Main.FindBuildingByGuidAnywhere(b.guid) == null)
+            {
+                log("the " + uniqueName + " fixture did not take at " + site.Position + ", skipping");
+                return null;
+            }
+            return b;
+        }
+
+        /// <summary>Demolishes a fixture from <see cref="PlacePeerFixture"/>, as its owner and off the wire.</summary>
+        private static void RemovePeerFixture(Player owner, Building b)
+        {
+            if (b == null) return;
+
+            Player previous = Player.inst;
+            try
+            {
+                if (owner != null) Player.inst = owner;
+                using (NetApply.Scope()) World.inst.DemolishBuilding(b, false);
+            }
+            finally { Player.inst = previous; }
+        }
+
+        /// <summary>
+        /// A destroyed house's residents become homeless in the kingdom that OWNS the house.
+        ///
+        /// Vanilla's Home.OnDisableInternal files them under Player.inst, the local kingdom, so a
+        /// house burnt down on another player's island would put their people on our homeless
+        /// list, to be fed and housed by the wrong kingdom. ComponentOwnerReferencePatch rewrites
+        /// that read to the house's owner; this proves it by evicting one villager from a house on
+        /// the peer's island. The villager is put back where it lived afterwards.
+        /// </summary>
+        private static void EvictionsGoToTheHouseOwner()
+        {
+            Building b = null;
+            Player owner = null;
+            Villager v = null;
+            IResidence hadHome = null;
+            try
+            {
+                SessionPlayer peer = FindAnyPeer();
+                if (peer == null || peer.inst == null || peer.inst.keep == null || World.inst == null
+                    || Player.inst == null || Player.inst.Workers.Count == 0)
+                {
+                    log("no peer keep or no villager of ours, eviction ownership not checked");
+                    return;
+                }
+                owner = peer.inst;
+
+                b = PlacePeerFixture(owner, World.smallHouseName);
+                if (b == null) return;
+
+                Home home = b.GetComponent<Home>();
+                if (home == null) { log("the house fixture has no Home, eviction ownership not checked"); return; }
+
+                // Any villager will do as the resident: what is under test is which list the
+                // house files them in, and the house decides that, not the villager.
+                v = Player.inst.Workers.data[0];
+                hadHome = v.Residence;
+                bool wasOurHomeless = Player.inst.Homeless.Contains(v);
+
+                home.Residents.Add(v);
+                home.OnDisableInternal();
+
+                check("a destroyed house's residents become homeless in the house owner's kingdom",
+                      owner.Homeless.Contains(v));
+                check("another kingdom's eviction does not land on our homeless list",
+                      wasOurHomeless || !Player.inst.Homeless.Contains(v));
+            }
+            catch (Exception ex)
+            {
+                check("the eviction ownership check finished without throwing", false);
+                Main.LogEx("[SELFTEST] eviction ownership", ex);
+            }
+            finally
+            {
+                try
+                {
+                    if (v != null)
+                    {
+                        if (owner != null) owner.Homeless.RemoveSwap(v);
+                        v.Residence = hadHome;
+                    }
+                    RemovePeerFixture(owner, b);
+                }
+                catch (Exception ex) { Main.LogEx("[SELFTEST] clearing the eviction fixture", ex); }
+            }
+        }
+
+        /// <summary>
+        /// A path a pathing worker thread gave up on is closed, not left waiting forever.
+        ///
+        /// The game swallows any exception inside a path calculation and leaves that path marked
+        /// Finding, which it never asks about again: the unit just stands there.
+        /// Main.CloseAbandonedPaths runs inside WaitForThread once the workers are done and closes
+        /// such paths as "no route". Checked twice: that the sweep is really spliced into the game,
+        /// and that it closes a stuck path, driven on a ThreadedPathing of our own with no threads
+        /// so the live pathfinder is never touched.
+        /// </summary>
+        private static void AbandonedPathsAreClosed()
+        {
+            try
+            {
+                check("the pathing dispatcher sweeps paths its workers abandoned",
+                      Main.AbandonedPathSweepInstalled == 1);
+
+                GamePath stuck = new GamePath();
+                stuck.status = GamePath.Status.Finding;
+                stuck.result.Add(Vector3.one);   // a half-written route the throw left behind
+
+                // Finished in this batch, then consumed and asked for again: Finding, but queued
+                // for the next batch. Closing this one would hand a working unit "no route".
+                GamePath requeued = new GamePath();
+                requeued.status = GamePath.Status.Finding;
+
+                ArrayExt<GamePath> batch = new ArrayExt<GamePath>(4);
+                batch.Add(stuck);
+                batch.Add(requeued);
+
+                ThreadedPathing pathing = new ThreadedPathing();
+                PrivateField.Set(pathing, "pathsToCalculate", new ArrayExt<GamePath>[] { batch });
+                PrivateField.Get<ArrayExt<GamePath>>(pathing, "requestedPaths").Add(requeued);
+
+                int before = Main.AbandonedPathsClosed;
+                Main.CloseAbandonedPaths(pathing);
+
+                check("an abandoned path is closed as no route",
+                      stuck.status == GamePath.Status.Complete && stuck.result.Count == 0
+                      && Main.AbandonedPathsClosed == before + 1);
+                check("a path already asked for again is left for the next batch",
+                      requeued.status == GamePath.Status.Finding);
+            }
+            catch (Exception ex)
+            {
+                check("the abandoned path check finished without throwing", false);
+                Main.LogEx("[SELFTEST] abandoned paths", ex);
+            }
+        }
+
 
         // ---- ROSTER ---------------------------------------------------------------------
 

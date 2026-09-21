@@ -7989,6 +7989,113 @@ namespace KaCMultiplayer
             }
         }
 
+        // ---- PATHS THE WORKER THREADS ABANDON ----------------------------------------------
+        //
+        // ThreadedPathing.CalculatePaths runs each path inside a bare catch, and the only line that
+        // marks a path Complete is the last one in the try. A path whose calculation throws is left
+        // at Status.Finding with nothing logged, and RequestPath refuses any path already Finding,
+        // so whoever asked (villager, army, ship, cart) never gets an answer and never asks again.
+        // In a session that is the "time runs, nobody moves" freeze.
+        //
+        // WaitForThread is the one place that sees every such path: it waits for all workers to
+        // finish the batch, then clears the batch. Right after that wait, with every worker parked,
+        // a path in the batch that is still Finding can only be one a worker gave up on. It is
+        // closed there as "no route", the answer the game already gives an unreachable target, so
+        // the asker's own logic moves on and asks again. Every unit type, one place, no polling.
+
+        /// <summary>Paths closed after a worker abandoned them, for the log and the suite.</summary>
+        public static int AbandonedPathsClosed;
+
+        /// <summary>How many WaitForThread call sites got the sweep, so a check can see it took.</summary>
+        public static int AbandonedPathSweepInstalled;
+
+        private static FieldInfo pathsToCalculateField;
+        private static FieldInfo requestedPathsField;
+
+        /// <summary>
+        /// Closes every path in the finished batch that a worker thread abandoned mid-calculation.
+        /// Called from inside ThreadedPathing.WaitForThread, after the workers have finished. See the
+        /// note above for why this is the multiplayer villager freeze. Single player: untouched.
+        /// </summary>
+        public static void CloseAbandonedPaths(ThreadedPathing pathing)
+        {
+            if (!InMultiplayer || pathing == null) return;
+
+            try
+            {
+                if (pathsToCalculateField == null)
+                    pathsToCalculateField = AccessTools.Field(typeof(ThreadedPathing), "pathsToCalculate");
+
+                ArrayExt<GamePath>[] batches = pathsToCalculateField.GetValue(pathing) as ArrayExt<GamePath>[];
+                if (batches == null) return;
+
+                // A path finished in this batch can be consumed and asked for AGAIN before this
+                // runs, which puts it back at Finding with a live request in requestedPaths. That
+                // one is waiting for the next batch, not abandoned, and must be left alone.
+                if (requestedPathsField == null)
+                    requestedPathsField = AccessTools.Field(typeof(ThreadedPathing), "requestedPaths");
+                ArrayExt<GamePath> queued = requestedPathsField.GetValue(pathing) as ArrayExt<GamePath>;
+
+                for (int w = 0; w < batches.Length; w++)
+                {
+                    ArrayExt<GamePath> batch = batches[w];
+                    if (batch == null) continue;
+
+                    for (int i = 0; i < batch.Count; i++)
+                    {
+                        GamePath p = batch.data[i];
+                        if (p == null || p.status != GamePath.Status.Finding) continue;
+                        if (queued != null && queued.Contains(p)) continue;
+
+                        // A half-written result is worse than none, and lastGridID = -1 stops
+                        // RequestPath reusing it as a cached route next time.
+                        p.result.Clear();
+                        p.lastGridID = -1;
+                        p.status = GamePath.Status.Complete;
+
+                        // The throw itself is swallowed by the game, so this line is the only
+                        // trace of it. The first few say where, which is what finds the cause.
+                        if (++AbandonedPathsClosed <= 20)
+                            helper.Log($"[PATHS] a {p.pathType} path for team {p.teamId} from {p.start} to {p.end}"
+                                       + " was abandoned by its worker thread; closed as no route"
+                                       + (AbandonedPathsClosed == 20 ? " (further ones counted, not logged)" : ""));
+                    }
+                }
+            }
+            catch (Exception e) { LogEx("closing abandoned paths", e); }
+        }
+
+        /// <summary>
+        /// Inserts <see cref="CloseAbandonedPaths"/> right after WaitForThread's wait for the
+        /// workers, before the finished batch is cleared. Earlier would race the workers; later
+        /// and the batch is gone.
+        /// </summary>
+        [HarmonyPatch(typeof(ThreadedPathing), "WaitForThread")]
+        public class ThreadedPathingAbandonedPathsHook
+        {
+            static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+            {
+                MethodInfo sweep = typeof(Main).GetMethod("CloseAbandonedPaths");
+
+                foreach (CodeInstruction c in instructions)
+                {
+                    yield return c;
+
+                    MethodInfo target = c.operand as MethodInfo;
+                    if (AbandonedPathSweepInstalled == 0 && target != null && target.Name == "Wait"
+                        && target.DeclaringType != null && target.DeclaringType.Name == "Countdown")
+                    {
+                        yield return new CodeInstruction(OpCodes.Ldarg_0);
+                        yield return new CodeInstruction(OpCodes.Call, sweep);
+                        AbandonedPathSweepInstalled++;
+                    }
+                }
+
+                if (AbandonedPathSweepInstalled == 0)
+                    helper.Log("[PATHS] WaitForThread has no Countdown.Wait any more; abandoned paths are NOT swept");
+            }
+        }
+
         // FIX (safety net): water/army/envoy pathing for multiplayer teams. Every PathCell stores its
         // per-team pathing data in fixed bool[5]/int[5] arrays indexed by teamId (waterPathBlocked[teamId],
         // waterPathCost[teamId], pathBlockedForArmies/Envoys[teamId], villager/envoyFootPathCost[teamId]).

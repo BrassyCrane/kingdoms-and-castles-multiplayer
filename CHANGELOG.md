@@ -9,6 +9,8 @@
 - Other players' islands are staffed by their own job settings on your machine too. The 0.14.0
   fix for this never took effect.
 - The host's lobby screen closes when the game starts, as it already did for guests.
+- Villagers, soldiers, carts and ships no longer stand still for good when the game fails to find
+  them a route. They get "no route" and pick something else to do.
 
 ## 0.15.0
 
@@ -41,10 +43,9 @@ From Bill Kerman's community patch:
 - Guests joining a loaded save keep their own kingdom instead of being handed a new one
 - No more "place your castle" over a kingdom that was just loaded
 - Fixed a case where loading stopped half way while restoring another player's keep
-- Farms, orchards, fishing and livestock harvest again, a broken autosave had been stopping the seasons
+- Fixed an issue that could stop farms, orchards, fishing and livestock from harvesting
 - Gold capacity counts your own throne room, gold is no longer stuck at 0 and merchant orders stay where you type them
-- Every island is staffed by its owner's job settings instead of the host's
-- Buildings finished on another player's machine are now fully set up, farms actually get farmers
+- Buildings finished on another player's machine are now fully set up
 - Fixed buildings and keeps on later islands not being recorded for their island
 - Save transfer rebuilt, big saves no longer stall or drop the joining player
 - Fixed a case where a kingdom loaded without its buildings, or drawn in pink
@@ -56,9 +57,9 @@ From Bill Kerman's community patch:
 - An error in the raid system no longer freezes the world clock
 - Fixed a loaded game coming back on Peaceful whatever difficulty it was saved on
 - Dragons fly the same path and breathe fire at the same time for everyone
-- Alliances need both sides to agree, war comes with two seasons' notice
-- Demands and offers between kingdoms, answered in a popup
-- Export prices, set what your kingdom charges other players (Ctrl+Shift+E)
+- The logic behind alliance requests needing both sides to agree, and two seasons' notice for war
+- The logic behind demands and offers between kingdoms
+- The logic behind export prices, what your kingdom charges other players
 - The merchant banner now also shows when another player's ship docks at your port
 
 More fixes:

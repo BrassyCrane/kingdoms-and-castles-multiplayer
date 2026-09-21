@@ -63,11 +63,10 @@ Created by **BrassyCrane**. Maintained by **BrassyCrane** and **Mr.Sajtos**.
 
 **Bill Kerman** found and fixed, in his community patch (merged in 0.14.0):
 
-- farms never harvesting (a destroyed cave container made every autosave fail, which stopped the
-  season change reaching the farms)
+- an issue that could stop farms from harvesting (a destroyed cave container made autosaves fail,
+  which could stop the season change reaching the farms)
 - other players' kingdoms having no gold capacity, so gold stayed at zero and merchant orders
   snapped back to 0
-- every island being staffed by the local player's job settings
 - buildings finished on another player's machine never being fully set up
 - per-island records sized before the map existed, which left buildings, keeps included, missing
   from their island
@@ -84,9 +83,10 @@ Created by **BrassyCrane**. Maintained by **BrassyCrane** and **Mr.Sajtos**.
 - a raid error being able to freeze the world clock (he contains the error; its cause is still unknown)
 - loaded games reverting to Peaceful difficulty
 
-He also added dragon flight sync, alliance requests that need both sides to agree, two seasons'
-notice for war, demands and offers between kingdoms, the diplomacy popups, per-kingdom export
-prices, and the merchant arrival banner for other players' ships.
+He also wrote dragon flight and fire sync, and the logic behind alliance requests that need both
+sides to agree, two seasons' notice for war, demands and offers between kingdoms, and per-kingdom
+export prices. The windows and popups for these are ours. He also made the merchant arrival banner
+show for other players' ships.
 
 Networking uses **[RiptideNetworking](https://github.com/RiptideNetworking/Riptide)** by Tom
 Weiland, under the MIT licence, which requires its notice to ship with it; see
