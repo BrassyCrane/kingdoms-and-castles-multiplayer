@@ -87,6 +87,7 @@ namespace KaCMultiplayer.Dev
             HousingDecisionsBelongToTheOwner();
             EvictionsGoToTheHouseOwner();
             AbandonedPathsAreClosed();
+            BuildingJobsAreRegistered("in the running session");
         }
 
         // ---- CLASS 1: A PER-LANDMASS ARRAY SIZED BEFORE THE MAP EXISTED -------------------
@@ -1159,6 +1160,80 @@ namespace KaCMultiplayer.Dev
             {
                 check("the abandoned path check finished without throwing", false);
                 Main.LogEx("[SELFTEST] abandoned paths", ex);
+            }
+        }
+
+
+        // ---- JOBS -----------------------------------------------------------------------
+
+        /// <summary>
+        /// Every job a building holds is also registered with the game's job system.
+        ///
+        /// A building keeps its jobs in its own list, and villagers only ever find work through
+        /// JobSystem. <c>Player.Reset</c> calls the GLOBAL <c>JobSystem.ClearAllJobs</c>, which
+        /// empties the job system for every kingdom but leaves each building's own list full. A
+        /// construction site in that state never gets another builder, because
+        /// <c>TryAddBuilderJobs</c> only adds jobs while the list is short, and a workplace never
+        /// gets another worker. Reset runs whenever a remote kingdom object is built, which is how
+        /// a join or rejoin reached everybody else's buildings: the "builders forget to finish
+        /// after a rejoin" report, whose workaround was deleting the site so it made fresh jobs.
+        ///
+        /// Called twice, while the session runs and again after the save loads back.
+        /// </summary>
+        internal static void BuildingJobsAreRegistered(string when)
+        {
+            try
+            {
+                HashSet<Job> registered = new HashSet<Job>();
+                var jobs = JobSystem.inst.jobs;
+                for (int lm = 0; lm < jobs.Count; lm++)
+                    for (int category = 0; category < jobs.data[lm].Count; category++)
+                        foreach (Job j in jobs.data[lm].data[category]) registered.Add(j);
+
+                int held = 0, orphaned = 0;
+                Dictionary<string, int> byType = new Dictionary<string, int>();
+
+                foreach (SessionPlayer kp in Main.kCPlayers.Values)
+                {
+                    Player p = (kp == null) ? null : kp.inst;
+                    if (p == null || p.Buildings == null) continue;
+
+                    for (int i = 0; i < p.Buildings.Count; i++)
+                    {
+                        Building b = p.Buildings.data[i];
+                        if (b == null || b.jobs == null) continue;
+
+                        foreach (Job j in b.jobs)
+                        {
+                            held++;
+                            if (registered.Contains(j)) continue;
+
+                            orphaned++;
+                            string name = j.GetType().Name;
+                            int n;
+                            byType.TryGetValue(name, out n);
+                            byType[name] = n + 1;
+                        }
+                    }
+                }
+
+                if (orphaned > 0)
+                {
+                    List<string> parts = new List<string>();
+                    foreach (var kv in byType) parts.Add(kv.Key + " x" + kv.Value);
+                    log("building jobs missing from the job system " + when + ": " + string.Join(", ", parts.ToArray()));
+                }
+                log("building jobs " + when + ": " + held + " held, " + orphaned + " not registered"
+                    + " (reset rewrite count " + Main.PlayerResetJobsHook.Rewritten + ")");
+
+                check("every building job is registered with the job system " + when, orphaned == 0);
+                check("resetting a remote kingdom leaves the job system alone " + when,
+                      Main.PlayerResetJobsHook.Rewritten >= 1 && Main.PlayerResetJobListHook.Rewritten >= 1);
+            }
+            catch (Exception ex)
+            {
+                check("the building job check finished without throwing " + when, false);
+                Main.LogEx("[SELFTEST] building jobs", ex);
             }
         }
 

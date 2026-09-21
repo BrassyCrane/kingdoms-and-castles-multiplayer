@@ -237,6 +237,7 @@ namespace KaCMultiplayer.Dev
             Log("session is up, running checks");
 
             CheckSessionBasics();
+            PrepareConstructionSiteFixture();
             CheckFakePeer();
 
             // The class checks, before anything below disturbs the world. They read the session as
@@ -260,6 +261,7 @@ namespace KaCMultiplayer.Dev
             PrepareIdSurvivalFixture();
             CheckSaveRoundTrip();
             CheckSaveLoadsBack();
+            Invariants.BuildingJobsAreRegistered("after the save loads back");
             CheckMaterialsAreComplete();
             CheckIdsSurvivedTheLoad();
             PrepareHostBuildFixture();
@@ -782,6 +784,61 @@ namespace KaCMultiplayer.Dev
         // has run. Guid.Empty means it could not be placed at all, which is itself the report.
         private static Guid hostBuilt = Guid.Empty;
         private static Guid hostKeepAtBuildTime = Guid.Empty;
+
+        private static Building siteFixture;
+
+        /// <summary>How many of the construction site fixture's jobs the job system still knows.</summary>
+        private static string FixtureJobsRegistered()
+        {
+            if (siteFixture == null) return "no site fixture";
+            int known = 0;
+            var jobs = JobSystem.inst.jobs;
+            foreach (Job j in siteFixture.jobs)
+                for (int lm = 0; lm < jobs.Count; lm++)
+                    for (int c = 0; c < jobs.data[lm].Count; c++)
+                        if (jobs.data[lm].data[c].Contains(j)) known++;
+            return known + " of " + siteFixture.jobs.Count + " site jobs registered";
+        }
+
+        /// <summary>
+        /// Places an unfinished house for the local kingdom and gives it its builder jobs, BEFORE
+        /// the fake peer arrives.
+        ///
+        /// The peer is built the way a remote player is, and building a remote player runs
+        /// Player.Reset, which empties the global job system. A site that already holds builder
+        /// jobs at that moment is exactly the state the "builders forget to finish after a
+        /// rejoin" report describes, so Invariants.BuildingJobsAreRegistered has something real
+        /// to look at rather than a town with no jobs in it.
+        /// </summary>
+        private static void PrepareConstructionSiteFixture()
+        {
+            try
+            {
+                if (Player.inst == null || Player.inst.keep == null) { Log("no keep, no construction site fixture"); return; }
+
+                Cell site = World.inst.GetCellDataClamped(Player.inst.keep.transform.position + new Vector3(4f, 0f, 0f));
+                if (site == null) { Log("no cell for the construction site fixture"); return; }
+
+                Building b = UnityEngine.Object.Instantiate<Building>(
+                    GameState.inst.GetPlaceableByUniqueName("smallhouse"));
+                b.Init();
+                b.transform.position = site.Position;
+                b.SendMessage("OnPlayerPlacement", SendMessageOptions.DontRequireReceiver);
+                World.inst.Place(b);
+
+                // UpdateConstruction would add these on its next tick; adding them now means the
+                // peer's Reset cannot run first.
+                typeof(Building).GetMethod("TryAddBuilderJobs", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                    .Invoke(b, null);
+
+                siteFixture = b;
+                Log("construction site fixture placed: " + b.guid + " with " + b.jobs.Count + " builder job(s)");
+            }
+            catch (Exception ex)
+            {
+                Main.LogEx("[SELFTEST] construction site fixture", ex);
+            }
+        }
 
         /// <summary>
         /// Places one building as a PLAYER does, broadcast and all, and remembers it.
@@ -1672,7 +1729,9 @@ namespace KaCMultiplayer.Dev
 
         private static void CheckFakePeer()
         {
+            Log("before the peer: " + FixtureJobsRegistered());
             FakePeer.Toggle();   // spawn
+            Log("after the peer: " + FixtureJobsRegistered());
 
             Check("the fake peer spawned as a second kingdom", FakePeer.IsActive);
 

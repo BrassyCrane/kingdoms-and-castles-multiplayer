@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Builders no longer stop working on construction sites after a player joins or rejoins. Deleting
+  and replacing the site is no longer needed.
+
 ## 0.15.1
 
 - Only a kingdom's own game settles people into its houses, so immigration no longer runs past

@@ -6,11 +6,6 @@ for where to find it). Anything not on this list, please report.
 
 Each entry says what you see, and what to do about it if there is a workaround.
 
-## Building
-
-- **After rejoining a game, builders can forget to finish what they were building.** Workaround:
-  delete the unfinished site and place it again. Reported on 0.15.0.
-
 ## Loading a saved game
 
 - **A big save takes about a minute to send** to each player joining it. The loading bar is slow,
@@ -21,7 +16,6 @@ Each entry says what you see, and what to do about it if there is a workaround.
 - **Witch huts are switched off** in multiplayer.
 - **Army positions are corrected in batches**, so a fast chase can briefly look different on each
   screen.
-- **Longboats can look wrong on a guest's screen.**
 - **An error in the raid system is caught** so it can no longer freeze the game clock, but what
   causes it is not known yet. A year may pass without a raid when it happens.
 
@@ -39,7 +33,6 @@ These are not synced yet, so the other machines hold their own guess until somet
 - **What is inside your granaries and stores.**
 - **How hungry or healthy your villagers are.**
 - **Which job each of your villagers is doing.**
-- **How far along your building sites are.**
 
 ## Lobby
 

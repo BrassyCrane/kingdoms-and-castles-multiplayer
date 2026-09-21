@@ -12,18 +12,28 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
   and open the Workshop page for anything they are missing. Worth checking first whether the game's
   mod loader can enable a mod without a restart; if it cannot, the fix button has to apply the
   change and restart the game.
-- **Builders forget to finish construction after a player rejoins.** Reported 2026-09-20, workaround
-  is to delete the site and place it again. Construction progress on another player's sites is not
-  synced, which is the first place to look.
 - **Rebuilding the lobby map throws once when the host opens a lobby** ("regenerating the lobby
   world (size changed)", a NullReferenceException that is caught). Nobody has joined yet at that
   point, but whatever the method does after the throw is skipped.
-- **The raid system throws and the error is only caught.** The clock no longer freezes, but a year
-  can pass with no raid and the cause is still unknown.
-- **The Hall of Diplomacy is disabled in multiplayer**, because the game only opens it when AI
-  kingdoms exist. Ctrl + Shift + D stands in for it. Make the real screen open instead.
-- **Witch huts are switched off in multiplayer.** Turn them back on with their spawning owned by one
-  machine, the way wolves are.
+
+## Base game systems switched off or broken in multiplayer
+
+Everything the game has that a multiplayer session does not have yet. Each one should come back,
+with one machine owning its decisions and the others applying them.
+
+- **AI kingdoms.** `World.PlaceAIs` is refused in a session (`NoAIKingdomsInMultiplayerHook`), so
+  there are no computer kingdoms at all. Bring them back with each AI kingdom simulated by one
+  machine (the host, or whoever owns the landmass) and synced like a player's kingdom. The Hall of
+  Diplomacy and merchant trade below both depend on AI kingdoms existing.
+- **Witch huts.** Switched off because their live sync was unreliable. Turn them back on with their
+  spawning owned by one machine, the way wolves are.
+- **The Hall of Diplomacy**, disabled because the game only opens it when AI kingdoms exist.
+  Ctrl + Shift + D stands in for it. Make the real screen open instead.
+- **Viking raids run, but the raid system throws and the error is only caught.** The clock no longer
+  freezes, but a year can pass with no raid and the cause is still unknown.
+- **Foreign merchants cannot visit another player's docks.** Any merchant heading for a dock outside
+  the local player's landmasses is destroyed. Letting them trade between kingdoms means provisioning
+  them from the right kingdom again.
 
 ## Decisions one machine should make, and currently every machine makes
 
@@ -45,7 +55,6 @@ the kingdom log filter, the pink ships, and the host's lobby screen staying aliv
   payer.
 - **Villager hunger and health.**
 - **Job assignments.**
-- **Construction progress on another player's sites**, see the builder report above.
 - **Army positions are corrected in batches**, so a fast chase can briefly look different on each
   screen. Smooth it out.
 - **A kingdom whose player left is only half frozen.** `Main.FreezeGhostKingdomsFully` gates the
@@ -59,10 +68,11 @@ the kingdom log filter, the pink ships, and the host's lobby screen staying aliv
   really round trip, with logging on both ends.
 - **A big save takes about a minute to reach each joining player.** It is sent in 64 chunk windows;
   make it quicker or make the wait clearer.
-- **Foreign merchants cannot visit another player's docks.** Any merchant heading for a dock outside
-  the local player's landmasses is destroyed. Letting them trade between kingdoms means provisioning
-  them from the right kingdom again.
 - **State the game keeps once, that multiplayer needs per kingdom**: WorldMask, UnitSystem,
   SiegeCatapult, DragonSpawn, and the static `Home.BuildGatherTypeOrder` and
   `HomeSaveData.UnloadVillager`. Each one is a place where two kingdoms share something they should
   not.
+- **Look into whether a co-op mode is feasible**: two or more players running one shared kingdom
+  instead of one kingdom each. Find out what the game ties to a single player (the local `Player`,
+  job settings, the build queue, resources) and whether one machine could own the kingdom while the
+  others send their actions to it.

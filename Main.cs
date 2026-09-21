@@ -325,6 +325,90 @@ namespace KaCMultiplayer
         }
 
         /// <summary>
+        /// Stands in for the two calls through which resetting ONE kingdom wipes the job system
+        /// for ALL of them: <c>JobSystem.ClearAllJobs</c> in <c>Player.Reset</c>, and
+        /// <c>JobSystem.InitJobList</c> in <c>Player.ResetPerLandMassData</c>, which replaces the
+        /// whole job table with empty lists.
+        ///
+        /// Each building keeps its own list of jobs, and neither call touches those lists. So
+        /// resetting a remote kingdom (building a joining or rejoining player's kingdom object,
+        /// regenerating the map, the resets around a load) left every other building holding jobs
+        /// the job system no longer knew about. A construction site in that state never gets
+        /// another builder, because TryAddBuilderJobs only adds jobs while its list is short: the
+        /// "builders forget to finish after a rejoin" report, whose workaround was deleting the
+        /// site so it made fresh jobs. Only the local kingdom's reset clears the job system now;
+        /// single player always does, exactly as vanilla.
+        ///
+        /// During a load the remote kingdom being unpacked is briefly Player.inst, so this lets
+        /// InitJobList through there; PreserveLoadedJobsHook in SessionSave covers that case.
+        ///
+        /// Called from IL, by <see cref="PlayerResetJobsHook"/>. Public and static for that reason.
+        /// </summary>
+        public static void ClearAllJobsUnlessRemote(JobSystem jobs, Player resetting)
+        {
+            if (Main.InMultiplayer && resetting != Player.inst) return;
+            jobs.ClearAllJobs();
+        }
+
+        /// <summary>The InitJobList half of <see cref="ClearAllJobsUnlessRemote"/>.</summary>
+        public static void InitJobListUnlessRemote(JobSystem jobs, Player resetting)
+        {
+            if (Main.InMultiplayer && resetting != Player.inst) return;
+            jobs.InitJobList();
+        }
+
+        /// <summary>
+        /// Routes a Player method's call to <paramref name="gameMethod"/> on JobSystem through
+        /// <paramref name="guard"/>, with the Player itself pushed as the extra argument so the
+        /// guard can tell whose reset this is. Shared by both reset hooks below.
+        /// </summary>
+        private static IEnumerable<CodeInstruction> GuardJobSystemCall(
+            IEnumerable<CodeInstruction> instructions, string gameMethod, string guard, Action counted)
+        {
+            MethodInfo replacement = typeof(Main).GetMethod(guard);
+
+            foreach (CodeInstruction c in instructions)
+            {
+                MethodInfo target = c.operand as MethodInfo;
+                if (target != null && target.DeclaringType == typeof(JobSystem) && target.Name == gameMethod)
+                {
+                    // Labels stay on the original instruction; the pushed receiver goes first.
+                    yield return new CodeInstruction(OpCodes.Ldarg_0);
+                    c.opcode = OpCodes.Call;
+                    c.operand = replacement;
+                    counted();
+                }
+                yield return c;
+            }
+        }
+
+        /// <summary>Guards Player.Reset's ClearAllJobs. See <see cref="ClearAllJobsUnlessRemote"/>.</summary>
+        [HarmonyPatch(typeof(Player), "Reset")]
+        public class PlayerResetJobsHook
+        {
+            /// <summary>Call sites rewritten, counting both hooks. Harmony re-runs a transpiler
+            /// every time the method is patched again, so this can exceed two.</summary>
+            public static int Rewritten;
+
+            static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+            {
+                return GuardJobSystemCall(instructions, "ClearAllJobs", "ClearAllJobsUnlessRemote", () => Rewritten++);
+            }
+        }
+
+        /// <summary>Guards ResetPerLandMassData's InitJobList. See <see cref="ClearAllJobsUnlessRemote"/>.</summary>
+        [HarmonyPatch(typeof(Player), "ResetPerLandMassData")]
+        public class PlayerResetJobListHook
+        {
+            public static int Rewritten;
+
+            static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+            {
+                return GuardJobSystemCall(instructions, "InitJobList", "InitJobListUnlessRemote", () => Rewritten++);
+            }
+        }
+
+        /// <summary>
         /// The player whose kingdom owns a landmass, or null if nobody's does.
         ///
         /// Deliberately NOT <see cref="GetPlayerByTeamID"/>, whose fallback to the local player is
