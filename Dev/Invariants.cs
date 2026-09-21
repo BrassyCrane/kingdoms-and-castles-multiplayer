@@ -359,15 +359,22 @@ namespace KaCMultiplayer.Dev
         private static void SnapshotCommissionsABuilding()
         {
             Building b = null;
+            Player owner = null;
             try
             {
-                if (Player.inst == null || Player.inst.keep == null || World.inst == null)
+                // The farm is the PEER's and the snapshot comes from the peer's client id, because
+                // that is the only arrival the handler accepts: a snapshot from a client with no
+                // player is dropped before it touches anything. The first version of this check
+                // sent from client 0 about a local farm, so it measured that drop and nothing else.
+                SessionPlayer peer = FindAnyPeer();
+                if (peer == null || peer.inst == null || peer.inst.keep == null || World.inst == null)
                 {
-                    log("no keep to place a snapshot fixture beside, skipping");
+                    log("no peer keep to place a snapshot fixture beside, skipping");
                     return;
                 }
+                owner = peer.inst;
 
-                Building keep = Player.inst.keep.GetComponent<Building>();
+                Building keep = owner.keep.GetComponent<Building>();
                 if (keep == null) { log("the keep has no Building component, skipping"); return; }
 
                 Cell site = World.inst.GetCellDataClamped(keep.transform.position + new Vector3(4f, 0f, 0f));
@@ -382,15 +389,23 @@ namespace KaCMultiplayer.Dev
                 // Placed UNDER CONSTRUCTION and privately, which is the state a peer's snapshot
                 // arrives into. Scope() keeps the fixture off the wire; this check is about what a
                 // receiver does with a snapshot, not about sending one.
-                using (NetApply.Scope())
+                // Player.inst aimed at the peer for placement, the same discipline FakePeer uses
+                // for its own keep and dock, so the farm lands in the peer's registries.
+                Player previous = Player.inst;
+                try
                 {
-                    b = UnityEngine.Object.Instantiate<Building>(
-                        GameState.inst.GetPlaceableByUniqueName("farm"));
-                    b.Init();
-                    b.transform.position = site.Position;
-                    b.SendMessage("OnPlayerPlacement", SendMessageOptions.DontRequireReceiver);
-                    World.inst.Place(b);
+                    Player.inst = owner;
+                    using (NetApply.Scope())
+                    {
+                        b = UnityEngine.Object.Instantiate<Building>(
+                            GameState.inst.GetPlaceableByUniqueName("farm"));
+                        b.Init();
+                        b.transform.position = site.Position;
+                        b.SendMessage("OnPlayerPlacement", SendMessageOptions.DontRequireReceiver);
+                        World.inst.Place(b);
+                    }
                 }
+                finally { Player.inst = previous; }
 
                 // A farm needs ground a farm will accept, and Place does not promise to take it.
                 // Checked the same way the host build fixture checks its own placement, so a site
@@ -418,7 +433,7 @@ namespace KaCMultiplayer.Dev
                 state.Built = true;
 
                 BuildSnapshotMessage m = new BuildSnapshotMessage();
-                m.Origin = 0;
+                m.Origin = peer.id;
                 m.State = state;
                 m.ResourceProgress = 0f;
 
@@ -427,7 +442,7 @@ namespace KaCMultiplayer.Dev
 
                 check("a snapshot marked built does finish the building", b.IsBuilt());
                 check("a building finished by a snapshot leaves the kingdom's unbuilt list",
-                      !IsOnTheUnbuiltList(Player.inst, b));
+                      !IsOnTheUnbuiltList(owner, b));
                 check("finishing a building by snapshot does not suppress its real completion",
                       Main.BuildingCompleteBuildHook.SkippedRecompletes == skippedBefore);
             }
@@ -443,7 +458,15 @@ namespace KaCMultiplayer.Dev
                 try
                 {
                     if (b != null)
-                        using (NetApply.Scope()) World.inst.DemolishBuilding(b, false);
+                    {
+                        Player previous = Player.inst;
+                        try
+                        {
+                            if (owner != null) Player.inst = owner;
+                            using (NetApply.Scope()) World.inst.DemolishBuilding(b, false);
+                        }
+                        finally { Player.inst = previous; }
+                    }
                 }
                 catch (Exception ex) { Main.LogEx("[SELFTEST] clearing the snapshot fixture", ex); }
             }
@@ -605,10 +628,15 @@ namespace KaCMultiplayer.Dev
                 owner.JobEnabledFlag[landMass][0] = false;
                 Player.inst.JobEnabledFlag[landMass][0] = true;
 
-                bool[] answered = Player.inst.GetJobEnabledFlags(landMass);
+                // Asked through the helper JobSystem.Update now calls. Calling
+                // Player.GetJobEnabledFlags here would test nothing: Mono inlines it, which is
+                // exactly how the old accessor hooks passed review and never ran.
+                bool[] answered = Main.JobEnabledFlagsFor(Player.inst, landMass);
 
                 check("a peer's island is staffed by the peer's job settings, not ours",
                       answered != null && answered.Length > 0 && answered[0] == false);
+                check("the job engine's table lookups are routed to the island's owner",
+                      Main.JobSystemOwnerTablesHook.Rewritten >= 2);
             }
             catch (Exception ex)
             {
@@ -756,6 +784,20 @@ namespace KaCMultiplayer.Dev
             // Cleared on purpose: a session does not carry research between saves, and restoring
             // it would hand a loaded kingdom upgrades it never bought.
             "upgrades",
+
+            // Null asks vanilla's Unpack for its normal creative defaults; PackKingdom only fills
+            // it for a creative-mode kingdom. An empty list would switch the survival rules off.
+            "cmoOptions",
+
+            // Legacy fields from older save formats. Vanilla's own Pack never writes them and its
+            // Unpack never reads them: it reads WorkersArray and the four *List fields instead.
+            "Workers",
+            "currProduction",
+            "lastProduction",
+            "currConsumption",
+            "lastConsumption",
+            "globalHappinessMods",
+            "resourcesPerLandmass",
         };
 
         /// <summary>

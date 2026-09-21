@@ -497,10 +497,12 @@ namespace KaCMultiplayer
         // quarries, all hired and fired by somebody else's settings, on every machine
         // independently.
         //
-        // These two hooks are the narrow seam that fixes it. JobSystem reaches the two pieces of
-        // per-landmass state that actually gate assignment through these accessors rather than by
-        // field, so redirecting them to the landmass's OWNER puts each island back under its own
-        // kingdom's rules without touching the engine itself.
+        // JobSystem reaches the two pieces of per-landmass state that actually gate assignment
+        // through Player.GetJobEnabledFlags and Player.GetJobPriorityOrder. Those are one-line
+        // getters, inside Mono's inlining threshold, so a Prefix on them never ran: that is why
+        // this fix once existed as two accessor hooks and peers' farms still went unstaffed. The
+        // transpiler below rewrites the CALL SITES in JobSystem.Update instead, to the two static
+        // helpers here, which answer with the landmass OWNER's row.
         //
         // The remaining Player.inst reads in that method are left alone on purpose:
         // JobFilledAvailable and JobCustomMaxEnabledFlag are scratch counters keyed by
@@ -508,37 +510,61 @@ namespace KaCMultiplayer
         // the table is all they need, and the loop bound is the landmass count, which is the same
         // number whoever you ask.
 
-        /// <summary>Answers with the landmass owner's enabled flags. See the note above.</summary>
-        [HarmonyPatch(typeof(Player), "GetJobEnabledFlags")]
-        public class PlayerJobEnabledFlagsHook
+        /// <summary>
+        /// A landmass's job enabled flags, from the kingdom that owns it.
+        /// Called in place of Player.GetJobEnabledFlags inside JobSystem.Update, so another
+        /// player's island is staffed by their settings. Single player: vanilla's own answer.
+        /// </summary>
+        public static bool[] JobEnabledFlagsFor(Player receiver, int landMass)
         {
-            public static bool Prefix(Player __instance, int landMass, ref bool[] __result)
-            {
-                Player owner = Main.JobTableOwnerFor(__instance, landMass);
-                if (owner == null) return true;
-
-                bool[][] table = owner.JobEnabledFlag;
-                if (table == null || landMass >= table.Length || table[landMass] == null) return true;
-
-                __result = table[landMass];
-                return false;
-            }
+            Player owner = JobTableOwnerFor(receiver, landMass);
+            bool[][] table = owner != null ? owner.JobEnabledFlag : null;
+            if (table == null || landMass >= table.Length || table[landMass] == null)
+                return receiver.JobEnabledFlag[landMass];
+            return table[landMass];
         }
 
-        /// <summary>Answers with the landmass owner's priority order. See the note above.</summary>
-        [HarmonyPatch(typeof(Player), "GetJobPriorityOrder")]
-        public class PlayerJobPriorityOrderHook
+        /// <summary>
+        /// A landmass's job priority order, from the kingdom that owns it.
+        /// Same reason as <see cref="JobEnabledFlagsFor"/>; the two must agree, since the loop
+        /// reads flag j of one against slot j of the other.
+        /// </summary>
+        public static int[] JobPriorityOrderFor(Player receiver, int landMass)
         {
-            public static bool Prefix(Player __instance, int landMass, ref int[] __result)
+            Player owner = JobTableOwnerFor(receiver, landMass);
+            int[][] table = owner != null ? owner.JobPriorityOrder : null;
+            if (table == null || landMass >= table.Length || table[landMass] == null)
+                return receiver.JobPriorityOrder[landMass];
+            return table[landMass];
+        }
+
+        /// <summary>
+        /// Rewrites JobSystem.Update's two job-table getter calls to the owner-aware helpers above.
+        /// The call site is the only seam that survives inlining; see the note above.
+        /// Same stack shape (Player, int) in and array out, so the swap is one operand each.
+        /// </summary>
+        [HarmonyPatch(typeof(JobSystem), "Update")]
+        public class JobSystemOwnerTablesHook
+        {
+            /// <summary>How many call sites were rewritten, so a check can see the patch took.</summary>
+            public static int Rewritten;
+
+            static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
             {
-                Player owner = Main.JobTableOwnerFor(__instance, landMass);
-                if (owner == null) return true;
+                MethodInfo flags = typeof(Main).GetMethod("JobEnabledFlagsFor");
+                MethodInfo order = typeof(Main).GetMethod("JobPriorityOrderFor");
 
-                int[][] table = owner.JobPriorityOrder;
-                if (table == null || landMass >= table.Length || table[landMass] == null) return true;
-
-                __result = table[landMass];
-                return false;
+                foreach (CodeInstruction c in instructions)
+                {
+                    MethodInfo target = c.operand as MethodInfo;
+                    if (target != null && target.DeclaringType == typeof(Player)
+                        && (c.opcode == OpCodes.Call || c.opcode == OpCodes.Callvirt))
+                    {
+                        if (target.Name == "GetJobEnabledFlags") { c.opcode = OpCodes.Call; c.operand = flags; Rewritten++; }
+                        else if (target.Name == "GetJobPriorityOrder") { c.opcode = OpCodes.Call; c.operand = order; Rewritten++; }
+                    }
+                    yield return c;
+                }
             }
         }
 

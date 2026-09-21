@@ -523,11 +523,19 @@ namespace KaCMultiplayer.Dev
                 if (categories == null) Log("could not read unitCategoriesGen, so unit materials were not checked");
                 else
                 {
+                    // The game builds categories for teams 0, 2, 3 and 4 only, and each session
+                    // kingdom borrows one of them (Main.UnitCategoryTeamFor). A category no kingdom
+                    // borrows is never painted and has no soldiers to draw, so it is not asked about.
+                    HashSet<int> used = new HashSet<int>();
+                    foreach (SessionPlayer kp in Main.kCPlayers.Values)
+                        if (kp != null && kp.inst != null && kp.inst.PlayerLandmassOwner != null)
+                            used.Add(Main.UnitCategoryTeamFor(kp.inst.PlayerLandmassOwner.teamId));
+
                     int cats = 0, litCats = 0;
                     for (int i = 0; i < categories.Count; i++)
                     {
                         UnitSystem.UnitCategory cat = categories[i];
-                        if (cat == null) continue;
+                        if (cat == null || !used.Contains(cat.teamId)) continue;
 
                         cats++;
                         if (cat.mat != null) litCats++;
@@ -1057,8 +1065,24 @@ namespace KaCMultiplayer.Dev
 
                 // Dark by default, so with the flag off the sweep must never put anything on the
                 // wire. Same shape as the combat-sync silence check.
+                //
+                // The sweep only announces an army that moved since its last announcement, and ours
+                // has already been announced where it stands, so it is forgotten first, the way a
+                // new session starts. With no army of our own one is raised beside the keep, kept
+                // off the wire, and released again afterwards.
+                UnitSystem.Army raised = null;
+                if (Main.ArmyPositionSyncEnabled && ours == null && Player.inst.keep != null)
+                    using (NetApply.Scope())
+                        raised = UnitSystem.inst.MakeArmy(Player.inst.keep.transform.position
+                            + new Vector3(3f, 0f, 3f), localTeam, UnitSystem.ArmyType.Default, addUnits: true);
+                if (Main.ArmyPositionSyncEnabled) ArmyPositionSync.Reset();
+
                 int publishedBefore = ArmyPositionSync.Published;
-                for (int i = 0; i < 40; i++) ArmyPositionSync.Tick();
+                try { for (int i = 0; i < 40; i++) ArmyPositionSync.Tick(); }
+                finally
+                {
+                    if (raised != null) using (NetApply.Scope()) UnitSystem.inst.ReleaseArmy(raised);
+                }
 
                 if (Main.ArmyPositionSyncEnabled)
                     Check("army positions are announced while the feature is on",

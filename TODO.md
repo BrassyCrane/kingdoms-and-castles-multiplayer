@@ -15,6 +15,9 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
 - **Builders forget to finish construction after a player rejoins.** Reported 2026-09-20, workaround
   is to delete the site and place it again. Construction progress on another player's sites is not
   synced, which is the first place to look.
+- **Rebuilding the lobby map throws once when the host opens a lobby** ("regenerating the lobby
+  world (size changed)", a NullReferenceException that is caught). Nobody has joined yet at that
+  point, but whatever the method does after the throw is skipped.
 - **The raid system throws and the error is only caught.** The clock no longer freezes, but a year
   can pass with no raid and the cause is still unknown.
 - **The Hall of Diplomacy is disabled in multiplayer**, because the game only opens it when AI

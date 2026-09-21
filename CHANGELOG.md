@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Only a kingdom's own game settles people into its houses, so immigration no longer runs past
+  the housing cap and villagers are no longer left homeless for good. Reported by BlueJay.
+- Other players' news no longer shows up in your kingdom log.
+- Boats are no longer drawn hot pink.
+- Other players' islands are staffed by their own job settings on your machine too. The 0.14.0
+  fix for this never took effect.
+- The host's lobby screen closes when the game starts, as it already did for guests.
+
 ## 0.15.0
 
 - Your kingdom is saved from your own game, not from the host's copy of it. Reloading a save no
