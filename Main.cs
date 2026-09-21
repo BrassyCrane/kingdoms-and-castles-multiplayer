@@ -2582,7 +2582,7 @@ namespace KaCMultiplayer
             /// WHY THAT ONE MISSING CHECK COSTS SO MUCH. This is the last call in
             /// LandmassOwner.SetBannerIdx, and there is real work after it: the loop that destroys
             /// and rebuilds UniMaterialsCracked, the materials every building picks from in
-            /// UpdateMaterialSelection. The throw skips all of it. Then it keeps going -- out of
+            /// UpdateMaterialSelection. The throw skips all of it. Then it keeps going: out of
             /// SetBannerIdx, out of Player.SetIndexedBanner, and out through
             /// PlayerSaveData.Unpack, which abandons the rest of that kingdom's restore. One army
             /// without a general is why a saved kingdom came back with no buildings, and why the
@@ -7912,7 +7912,7 @@ namespace KaCMultiplayer
         /// THE SAME CRASH AS THE SHIP ONE ABOVE, from the other direction. Restoring a fishing hut
         /// runs OnBuildingPlacement, which calls ValidateDockPositions, which asks each dock cell
         /// PathCell.GetBlocksWaterPath(cell, owner.teamId). That reads waterPathBlocked[teamId] --
-        /// a bool array sized for vanilla's five teams -- and our team ids start at 5. So a hut
+        /// a bool array sized for vanilla's five teams, and our team ids start at 5. So a hut
         /// belonging to a multiplayer kingdom indexes past the end of the array and takes the whole
         /// load down with it: "There was a problem loading this save file."
         ///
@@ -7927,7 +7927,7 @@ namespace KaCMultiplayer
         /// to be wrong anyway.
         ///
         /// GetBlocksWaterPath cannot be patched instead. It is nine bytes of IL, which is inside
-        /// Mono's inlining threshold, so a prefix on it would be dead code -- the same trap that
+        /// Mono's inlining threshold, so a prefix on it would be dead code. It is the same trap that
         /// IsCreativeModeOptionOn and GetJobEnabledFlags set for this project already.
         /// </summary>
         [HarmonyPatch(typeof(FishingHut), "ValidateDockPositions")]

@@ -38,7 +38,7 @@ namespace Riptide
         TransportError,
         /// <summary>The connection timed out.</summary>
         /// <remarks>
-        ///   This also acts as the fallback reason—if a client disconnects and the message containing the <i>real</i> reason is lost
+        ///   This also acts as the fallback reason: if a client disconnects and the message containing the <i>real</i> reason is lost
         ///   in transmission, it can't be resent as the connection will have already been closed. As a result, the other end will time
         ///   out the connection after a short period of time and this will be used as the reason.
         /// </remarks>

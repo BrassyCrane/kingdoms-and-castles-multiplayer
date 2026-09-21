@@ -57,7 +57,7 @@ namespace Riptide
         }
         private short _rtt;
         /// <summary>The smoothed round trip time (ping) of the connection, in milliseconds. -1 if not calculated yet.</summary>
-        /// <remarks>This value is slower to accurately represent lasting changes in latency than <see cref="RTT"/>, but it is less susceptible to changing drastically due to significant—but temporary—jumps in latency.</remarks>
+        /// <remarks>This value is slower to accurately represent lasting changes in latency than <see cref="RTT"/>, but it is less susceptible to changing drastically due to significant but temporary jumps in latency.</remarks>
         public short SmoothRTT { get; private set; }
         /// <summary>The time (in milliseconds) after which to disconnect if no heartbeats are received.</summary>
         public int TimeoutTime { get; set; }

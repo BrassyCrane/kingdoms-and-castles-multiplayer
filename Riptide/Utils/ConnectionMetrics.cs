@@ -63,7 +63,7 @@ namespace Riptide.Utils
         /// <summary>The number of duplicate reliable messages which were received, but discarded (and not handled) since the last <see cref="Reset"/> call.</summary>
         public int ReliableDiscarded { get; internal set; }
         /// <summary>The number of unique reliable messages sent since the last <see cref="Reset"/> call.
-        /// A message only counts towards this the first time it is sent—subsequent resends are not counted.</summary>
+        /// A message only counts towards this the first time it is sent; subsequent resends are not counted.</summary>
         public int ReliableUniques { get; internal set; }
         /// <summary>The number of send attempts that were required to deliver recent reliable messages.</summary>
         public readonly RollingStat RollingReliableSends;

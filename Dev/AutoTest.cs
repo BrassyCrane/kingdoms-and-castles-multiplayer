@@ -440,7 +440,7 @@ namespace KaCMultiplayer.Dev
         /// The specific chain it exists to catch: LandmassOwner.SetBannerIdx ends by calling
         /// UnitSystem.UpdateMaterialFor, which walks every army dereferencing generalComponent with
         /// no null check. One army without a general mid-load throws, and everything after that
-        /// call is skipped -- including the loop that builds UniMaterialsCracked, the array every
+        /// call is skipped, including the loop that builds UniMaterialsCracked, the array every
         /// building picks its material from. So UniMaterialsCracked is asserted element by element
         /// rather than merely for being non-null: a half-built array is exactly what that bug
         /// leaves behind.

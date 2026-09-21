@@ -430,7 +430,7 @@ namespace KaCMultiplayer.Net
             //
             // UNRELIABLE ON PURPOSE, and this is not an optimisation. A reliable message that
             // cannot be delivered within MaxSendAttempts makes Riptide disconnect the connection
-            // that sent it -- see PendingMessage.TrySend. This one is sent while the downstream is
+            // that sent it (see PendingMessage.TrySend). This one is sent while the downstream is
             // saturated with the very save it is asking for, so its acks lag, it retries, and it
             // hung the joining player up on themselves about two seconds into every join.
             //
