@@ -59,7 +59,7 @@ The one exception is the bundled RiptideNetworking library, which keeps its own 
 
 ## Credits
 
-Created by **BrassyCrane**. Maintained by **BrassyCrane** and **Mr.Sajtos**.
+Created by **BrassyCrane**. Maintained by **BrassyCrane**, **Mr.Sajtos**, **Bill Kerman** and **Bullofshiva**.
 
 **Bill Kerman** found and fixed, in his community patch (merged in 0.14.0):
 

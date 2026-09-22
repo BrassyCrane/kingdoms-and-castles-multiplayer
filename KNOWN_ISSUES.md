@@ -1,6 +1,6 @@
 # Known issues
 
-Problems we know about in the current version, **0.15.1**. If you run into one of these, a report is
+Problems we know about in the current version, **0.15.2**. If you run into one of these, a report is
 still useful, especially with your Player.log attached (see the [README](README.md#reporting-a-bug)
 for where to find it). Anything not on this list, please report.
 
@@ -32,7 +32,8 @@ These are not synced yet, so the other machines hold their own guess until somet
 
 - **What is inside your granaries and stores.**
 - **How hungry or healthy your villagers are.**
-- **Which job each of your villagers is doing.**
+- **Which job each of your villagers is doing.** Only your own game puts your villagers to work,
+  so on other players' screens your workplaces show no workers and your stores can look empty.
 
 ## Lobby
 

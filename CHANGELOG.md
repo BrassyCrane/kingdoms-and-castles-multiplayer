@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.15.2
 
 - Builders no longer stop working on construction sites after a player joins or rejoins. Deleting
   and replacing the site is no longer needed.
