@@ -653,26 +653,26 @@ namespace KaCMultiplayer
         }
 
         // WHO IS ELIGIBLE IS NOT WHO GETS PICKED. JobSystemOwnerTablesHook, just above, makes
-        // every machine agree on which villagers are eligible for a job and in what priority --
+        // every machine agree on which villagers are eligible for a job and in what priority, but
         // it does not stop the assignment itself. Job.UpdateAssignment is the vanilla method that
         // actually calls Job.AssignEmployee for an ordinary job (checked against the shipped IL:
         // BuilderJob and GuildBuilderJob, the two job types a construction site uses, both
         // inherit it unmodified, neither overrides it), and JobSystem.Update's own loop calls it
         // for every open job on every landmass, on every machine, once a frame, with no ownership
-        // check at all -- run identically whether the landmass is this machine's own or not.
+        // check at all, run identically whether the landmass is this machine's own or not.
         //
         // So even with matching eligibility now, two machines can still independently assign
         // DIFFERENT idle villagers to the SAME foreign job, because which villagers are idle
         // RIGHT NOW is each machine's own local simulation, not something the settings fix
         // synchronises. A foreign kingdom's storage buildings then get staffed by whichever
         // villager THIS machine happened to pick rather than whichever one the owner's own
-        // machine actually picked, and drift out of step with the owner's real state -- the same
+        // machine actually picked, and drift out of step with the owner's real state. It is the same
         // "everyone else holds a mirror that drifts" DealKind.Settled already documents for a
         // diplomacy payment, reached here through job assignment instead of direct resource
         // movement.
         //
-        // (Job.AssignEmployee has two other callers, Building.SetAndAddJob -- reached from every
-        // building's OnAddJobs via CompleteBuild -- and Home.UpdateHomemakerAssignment, neither
+        // (Job.AssignEmployee has two other callers, Building.SetAndAddJob (reached from every
+        // building's OnAddJobs via CompleteBuild) and Home.UpdateHomemakerAssignment, neither
         // gated here. Left open deliberately: this closes the per-tick JobSystem.Update path,
         // confirmed to matter for the symptom below; the other two need their own verification
         // before gating.)
@@ -8062,7 +8062,7 @@ namespace KaCMultiplayer
         ///
         /// THE SAME CRASH AS THE SHIP ONE ABOVE, from the other direction. Restoring a fishing hut
         /// runs OnBuildingPlacement, which calls ValidateDockPositions, which asks each dock cell
-        /// PathCell.GetBlocksWaterPath(cell, owner.teamId). That reads waterPathBlocked[teamId] --
+        /// PathCell.GetBlocksWaterPath(cell, owner.teamId). That reads waterPathBlocked[teamId],
         /// a bool array sized for vanilla's five teams, and our team ids start at 5. So a hut
         /// belonging to a multiplayer kingdom indexes past the end of the array and takes the whole
         /// load down with it: "There was a problem loading this save file."

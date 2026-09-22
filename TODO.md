@@ -44,17 +44,16 @@ kingdom's own machine decides, everyone else applies what it broadcasts.
 Done on `dev`, waiting on a real two machine test: housing and immigration, `IsPlayerBuilding`,
 the kingdom log filter, the pink ships, and the host's lobby screen staying alive under the game.
 
-- **Job assignment.** `Job.UpdateAssignment` has the same shape. Careful with the trade: gating it
-  means another player's production buildings get no workers in our copy, so their stores read
-  empty here, which is the same gap that made tribute pay the wrong amount.
-
 ## Not synced yet, and each one is a way for two machines to drift apart
 
 - **Building storage contents** (granaries, stores). `EconomySnapshotMessage` exists but nothing
   ever sends it. Diplomacy tribute works around it by settling on whichever machine answers for the
-  payer.
+  payer. More urgent now that job assignment is owner only (`JobUpdateAssignmentForeignHook`):
+  another player's workplaces get no workers in our copy, so their stores read empty here until
+  the owner's contents are sent.
 - **Villager hunger and health.**
-- **Job assignments.**
+- **Job assignments.** Decided by the owner only now, but not sent, so another player's workers
+  show as idle in our copy.
 - **Army positions are corrected in batches**, so a fast chase can briefly look different on each
   screen. Smooth it out.
 - **A kingdom whose player left is only half frozen.** `Main.FreezeGhostKingdomsFully` gates the

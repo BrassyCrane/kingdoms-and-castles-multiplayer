@@ -4,6 +4,8 @@
 
 - Builders no longer stop working on construction sites after a player joins or rejoins. Deleting
   and replacing the site is no longer needed.
+- Only a kingdom's own game decides which villager takes which job, so two games no longer pick
+  different workers for the same job. By Bill Kerman.
 
 ## 0.15.1
 
