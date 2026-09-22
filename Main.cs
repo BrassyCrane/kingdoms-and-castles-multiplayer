@@ -652,6 +652,73 @@ namespace KaCMultiplayer
             }
         }
 
+        // WHO IS ELIGIBLE IS NOT WHO GETS PICKED. JobSystemOwnerTablesHook, just above, makes
+        // every machine agree on which villagers are eligible for a job and in what priority --
+        // it does not stop the assignment itself. Job.UpdateAssignment is the vanilla method that
+        // actually calls Job.AssignEmployee for an ordinary job (checked against the shipped IL:
+        // BuilderJob and GuildBuilderJob, the two job types a construction site uses, both
+        // inherit it unmodified, neither overrides it), and JobSystem.Update's own loop calls it
+        // for every open job on every landmass, on every machine, once a frame, with no ownership
+        // check at all -- run identically whether the landmass is this machine's own or not.
+        //
+        // So even with matching eligibility now, two machines can still independently assign
+        // DIFFERENT idle villagers to the SAME foreign job, because which villagers are idle
+        // RIGHT NOW is each machine's own local simulation, not something the settings fix
+        // synchronises. A foreign kingdom's storage buildings then get staffed by whichever
+        // villager THIS machine happened to pick rather than whichever one the owner's own
+        // machine actually picked, and drift out of step with the owner's real state -- the same
+        // "everyone else holds a mirror that drifts" DealKind.Settled already documents for a
+        // diplomacy payment, reached here through job assignment instead of direct resource
+        // movement.
+        //
+        // (Job.AssignEmployee has two other callers, Building.SetAndAddJob -- reached from every
+        // building's OnAddJobs via CompleteBuild -- and Home.UpdateHomemakerAssignment, neither
+        // gated here. Left open deliberately: this closes the per-tick JobSystem.Update path,
+        // confirmed to matter for the symptom below; the other two need their own verification
+        // before gating.)
+        //
+        // Gated the same way BarracksTickForeignHook already gates Barracks.Tick: the kingdom's
+        // own machine decides, and its own broadcasts carry the result to everyone else. Real
+        // session report this closes: builders correctly staffed by the right settings but still
+        // occasionally picked independently per machine, drifting a rejoining player's own
+        // warehouses out of step with what they actually held.
+        [HarmonyPatch(typeof(Job), "UpdateAssignment")]
+        public class JobUpdateAssignmentForeignHook
+        {
+            // Same reasoning as BarracksTickForeignHook's own flag: this sits on a per-job,
+            // per-tick path (every open job in the world, every frame), so an unguarded log here
+            // is a line per job per tick.
+            private static bool warnedGateFailure;
+
+            public static bool Prefix(Job __instance)
+            {
+                if (!NetClient.client.IsConnected) return true; // single-player: the game's own path
+                try
+                {
+                    IEmployer employer = __instance.employer;
+                    if (employer == null) return true;
+
+                    // Unowned/neutral (no LandmassOwner yet, e.g. a keep placement still in
+                    // flight) ticks everywhere; ForeignKingdomTeam already excludes the game's
+                    // own AI/neutral team range.
+                    LandmassOwner owner = World.GetLandmassOwner(employer.LandMass());
+                    if (owner == null) return true;
+
+                    if (ForeignKingdomTeam(owner.teamId)) return false; // foreign kingdom's job: not ours to decide
+                }
+                catch (Exception e)
+                {
+                    if (!warnedGateFailure)
+                    {
+                        warnedGateFailure = true;
+                        LogEx("job assignment ownership gate (further occurrences suppressed)", e);
+                    }
+                }
+
+                return true;
+            }
+        }
+
         // Team ids already warned about, so an orphaned kingdom doesn't log once per frame
         // forever. A miss is persistent by nature, the owner has left, so the first report is
         // the informative one and the rest are noise.
