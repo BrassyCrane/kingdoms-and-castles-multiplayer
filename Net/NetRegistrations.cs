@@ -261,9 +261,14 @@ namespace KaCMultiplayer.Net
             NetRegistry.OnClient<ArmyHealthMessage>(NetMessageId.ArmyHealth,
                 (m, ctx) => ApplyArmyHealth(m));
 
-            // Host-authoritative: sent from the host either as a broadcast on placement or
-            // targeted at a joining client to catch it up. Never travels upward.
+            // Travels both ways. The host broadcasts what it places and catches joiners up, and a
+            // guest reports the den its own cave turned into, because the cave that converts is the
+            // one next to YOUR keep and only your machine knows a keep went there. The host applies
+            // it and passes it on to everyone else; applying sets applyingWorldHazard, so nobody
+            // announces a den they were told about and the message cannot loop.
             NetRegistry.Register<HazardSpawnMessage>(NetMessageId.HazardSpawn);
+            NetRegistry.OnServer<HazardSpawnMessage>(NetMessageId.HazardSpawn,
+                (m, ctx) => { ApplyHazardSpawn(m); NetRouter.Broadcast(m, ctx.SenderId); });
             NetRegistry.OnClient<HazardSpawnMessage>(NetMessageId.HazardSpawn,
                 (m, ctx) => ApplyHazardSpawn(m));
 
@@ -1205,7 +1210,21 @@ namespace KaCMultiplayer.Net
                 // Lets the placement past the client-side suppression hooks.
                 Main.applyingWorldHazard = true;
 
-                if (m.HazardType == 0) World.inst.AddWolfDen(m.X, m.Z);
+                if (m.HazardType == 0)
+                {
+                    // Two players can each have a keep near the same cave, and a joiner is caught
+                    // up on every den the host already has on top of whatever its own save
+                    // restored, so the same den gets announced more than once. Stacking two on one
+                    // tile would double the wolves out of it, which nothing would ever undo.
+                    if (DenExistsAt(m.X, m.Z))
+                    {
+                        NetLog.Info("wolf den at " + m.X + "," + m.Z + " is already here, ignored");
+                        return;
+                    }
+
+                    World.inst.AddWolfDen(m.X, m.Z);
+                    ClearCaveAt(m.X, m.Z);
+                }
                 else if (m.HazardType == 1) World.inst.AddWitchHut(m.X, m.Z);
                 else { NetLog.Warn("unknown hazard type " + m.HazardType); return; }
 
@@ -1213,6 +1232,56 @@ namespace KaCMultiplayer.Net
             }
             catch (Exception ex) { NetLog.Error("hazard spawn", ex); }
             finally { Main.applyingWorldHazard = false; }
+        }
+
+        /// <summary>
+        /// True when this machine already has a wolf den on the given cell. Reads the game's own
+        /// list of dens rather than scanning the scene, and bounds on Count because that list keeps
+        /// stale entries past it.
+        /// </summary>
+        private static bool DenExistsAt(int x, int z)
+        {
+            try
+            {
+                var dens = WolfDen.wolfDens;
+                if (dens == null) return false;
+
+                for (int i = 0; i < dens.Count; i++)
+                {
+                    WolfDen d = dens[i];
+                    if (d == null) continue;
+
+                    Cell cell = World.inst.GetCellData(d.transform.position);
+                    if (cell != null && cell.x == x && cell.z == z) return true;
+                }
+            }
+            catch (Exception ex) { NetLog.Error("looking for a wolf den", ex); }
+            return false;
+        }
+
+        /// <summary>
+        /// Removes the empty cave standing on a cell a wolf den has just been placed on.
+        ///
+        /// The machine whose keep triggered the conversion destroyed its own cave on the way past.
+        /// Every other machine is only being told the den exists, so without this the den is
+        /// dropped on top of a cave that is still there and the same spot looks different to each
+        /// player. A scan of the caves is fine here: dens are placed a handful of times in a whole
+        /// session, not per frame.
+        /// </summary>
+        private static void ClearCaveAt(int x, int z)
+        {
+            try
+            {
+                EmptyCave[] caves = UnityEngine.Object.FindObjectsOfType<EmptyCave>();
+                for (int i = 0; i < caves.Length; i++)
+                {
+                    Cell cell = World.inst.GetCellData(caves[i].transform.position);
+                    if (cell == null || cell.x != x || cell.z != z) continue;
+
+                    UnityEngine.Object.Destroy(caves[i].gameObject);
+                }
+            }
+            catch (Exception ex) { NetLog.Error("clearing the cave under a wolf den", ex); }
         }
 
         private static void ApplyEconomySnapshot(EconomySnapshotMessage m)

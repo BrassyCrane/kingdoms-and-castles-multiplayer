@@ -3921,32 +3921,42 @@ namespace KaCMultiplayer
             }
         }
 
-        // World hazards (wolf dens, witch huts) are host-authoritative. On clients the local
-        // spawn is suppressed; the host broadcasts each placement and clients mirror it. This
-        // keeps both players' maps identical. Existing hazards are sent to late joiners in
+        // World hazards are announced so that every machine ends up with the same set. Witch huts
+        // are placed during generation on the host's RNG and stay host-authoritative. Wolf dens are
+        // not: the only thing in the game that creates one is EmptyCave.Update, which turns a cave
+        // into a den when a keep is built within fifteen tiles of it, and in multiplayer that
+        // happens on whichever machine owns the keep. Existing hazards are sent to late joiners in
         // ClientConnected.
+        //
+        // THE CRASH THIS FIXES (player report, 0.15.2). A joining player's log filled with
+        // NullReferenceException at EmptyCave.Update. The suppression here used to return false on
+        // a guest, which leaves the patched method returning null, and the vanilla caller does this:
+        //
+        //     WolfDen den = World.inst.AddWolfDen(x, z);
+        //     for (int i = 0; i < SRand.Range(3, 5); i++) den.AddWolf();
+        //
+        // so it threw on every one of the guest's own caves. Worse than the log: the cave had
+        // already destroyed itself by then, so the guest was left with bare ground where a den
+        // should be and the host never heard about it at all. A guest now makes its own den and
+        // tells the host, which mirrors it and passes it on, so the den exists everywhere.
         [HarmonyPatch(typeof(World), "AddWolfDen")]
         public class AddWolfDenHook
         {
-            public static bool Prefix(int x, int z)
-            {
-                // Pure clients never spawn their own wolf dens; they get them from the host.
-                // Suppress local spawns on pure clients EXCEPT while loading a save, the save
-                // restores hazards by calling AddWitchHut/AddWolfDen, and suppressing those leaves
-                // a null hazard that crashes WitchHutSaveData.Unpack. During unpack, let them through.
-                if (NetClient.client.IsConnected && !NetHost.IsRunning && !Main.applyingWorldHazard
-                    && !LoadSaveOverrides.SessionSave.Unpacking)
-                    return false;
-                return true;
-            }
-
             public static void Postfix(int x, int z)
             {
-                if (NetHost.IsRunning && !Main.applyingWorldHazard)
+                // A den we are placing BECAUSE we were told about one is not news.
+                if (Main.applyingWorldHazard) return;
+                if (!NetClient.client.IsConnected) return;   // single-player, nothing to tell
+
+                var spawn = new KaCMultiplayer.Net.Messages.HazardSpawnMessage { X = x, Z = z, HazardType = 0 };
+                try
                 {
-                    try { KaCMultiplayer.Net.NetRouter.Broadcast(new KaCMultiplayer.Net.Messages.HazardSpawnMessage { X = x, Z = z, HazardType = 0 }, NetClient.client.Id); }
-                    catch (Exception e) { Main.helper.Log("AddWolfDen broadcast error: " + e.Message); }
+                    if (NetHost.IsRunning)
+                        KaCMultiplayer.Net.NetRouter.Broadcast(spawn, NetClient.client.Id);
+                    else
+                        KaCMultiplayer.Net.NetRouter.Send(spawn);
                 }
+                catch (Exception e) { Main.helper.Log("AddWolfDen announce error: " + e.Message); }
             }
         }
 
