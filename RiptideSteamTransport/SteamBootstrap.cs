@@ -128,7 +128,70 @@ public class SteamBootstrap : MonoBehaviour {
 		}
 
 		s_EverInitialized = true;
+
+		TuneNetworking();
     }
+
+	// WHY THE DEFAULT BUFFER IS TOO SMALL FOR THIS MOD (player report, 0.15.2: a 26 megabyte log of
+	// "Failed to send ... k_EResultLimitExceeded", and players dropped for no stated reason).
+	//
+	// Steam holds outgoing data for a connection in a buffer of its own, 512 kilobytes by default,
+	// and refuses every further send with LimitExceeded until that buffer drains. Joining a game
+	// pushes a whole saved kingdom down one connection, which is megabytes, and a busy session
+	// pushes a steady stream of position and health updates on top. Once the buffer is full nothing
+	// gets out, including the heartbeat that says the player is still there, so the other end
+	// eventually decides the connection is dead and drops them.
+	//
+	// Four megabytes is chosen to hold a whole save transfer's worth of queued chunks rather than a
+	// fraction of one. It is memory Steam only reserves while a connection is actually behind.
+	//
+	// Global scope, set once before any socket exists, because both the host's listen socket and the
+	// joining player's connection need it and neither is created here. Failing to set it is not
+	// fatal, it only means the old behaviour, so this logs and carries on.
+	// Steam hangs up on its own account after ten seconds of silence, under everything Riptide
+	// thinks about the connection, so raising Riptide's timeout alone would not have saved a
+	// player whose game stalled through an autosave. Both have to agree, and this is the lower of
+	// the two, so it is the one that decides. Kept a little above the session timeout the mod sets
+	// on Riptide, so a dropped player is reported by the layer that can say why.
+	private const int SteamTimeoutConnectedMs = 35000;
+
+	private static void TuneNetworking()
+	{
+		SetGlobalInt(ESteamNetworkingConfigValue.k_ESteamNetworkingConfig_SendBufferSize, 4 * 1024 * 1024);
+		SetGlobalInt(ESteamNetworkingConfigValue.k_ESteamNetworkingConfig_TimeoutConnected, SteamTimeoutConnectedMs);
+	}
+
+	/// <summary>
+	/// Sets one global Steam networking option. Steamworks.NET only exposes the raw form, which
+	/// wants a pointer to the value, so the value is pinned for the length of the call.
+	/// </summary>
+	private static void SetGlobalInt(ESteamNetworkingConfigValue option, int value)
+	{
+		System.IntPtr held = System.IntPtr.Zero;
+		try
+		{
+			held = System.Runtime.InteropServices.Marshal.AllocHGlobal(sizeof(int));
+			System.Runtime.InteropServices.Marshal.WriteInt32(held, value);
+
+			bool ok = SteamNetworkingUtils.SetConfigValue(
+				option,
+				ESteamNetworkingConfigScope.k_ESteamNetworkingConfig_Global,
+				System.IntPtr.Zero,
+				ESteamNetworkingConfigDataType.k_ESteamNetworkingConfig_Int32,
+				held);
+
+			Main.helper.Log("[net] " + option + " = " + value + (ok ? " set" : " REFUSED by Steam"));
+		}
+		catch (System.Exception e)
+		{
+			Main.helper.Log("[net] could not set " + option + ": " + e.Message);
+		}
+		finally
+		{
+			if (held != System.IntPtr.Zero)
+				System.Runtime.InteropServices.Marshal.FreeHGlobal(held);
+		}
+	}
 
 	// This should only ever get called on first load and after an Assembly reload, You should never Disable the Steamworks Manager yourself.
 	protected virtual void OnEnable() {

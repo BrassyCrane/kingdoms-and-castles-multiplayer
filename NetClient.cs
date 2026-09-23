@@ -52,6 +52,13 @@ namespace KaCMultiplayer
                     if (client.Connection != null)
                     {
                         client.Connection.CanQualityDisconnect = false;
+
+                        // Same reason as the host side, see NetHost.SessionTimeoutMs: the game
+                        // stalls for longer than Riptide's stock five seconds all by itself, and a
+                        // stall is not a lost player. Set on the connection rather than on the
+                        // client, because a client only pushes its timeout down to a connection
+                        // that already exists and this one has only just been made.
+                        client.Connection.TimeoutTime = NetHost.SessionTimeoutMs;
                         Main.helper.Log("[net] quality-disconnect disabled for our own connection; "
                                         + "a slow save transfer is not a broken link");
                     }
