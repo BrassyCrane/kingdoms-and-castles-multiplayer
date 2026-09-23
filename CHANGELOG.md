@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.3
+
+- Players are no longer dropped from a session for no reason. The game pausing for a few seconds,
+  an autosave on a big map for instance, no longer counts as a player having left.
+- Player.log no longer grows to tens of megabytes when a connection is busy. The one line that was
+  repeated hundreds of thousands of times is now a short report every few seconds.
+- A joining player's own caves turn into wolf dens again, and every player sees the same dens in
+  the same places. They used to leave bare ground and an error on every frame.
+
 ## 0.15.2
 
 - Builders no longer stop working on construction sites after a player joins or rejoins. Deleting

@@ -1,6 +1,6 @@
 # Known issues
 
-Problems we know about in the current version, **0.15.2**. If you run into one of these, a report is
+Problems we know about in the current version, **0.15.3**. If you run into one of these, a report is
 still useful, especially with your Player.log attached (see the [README](README.md#reporting-a-bug)
 for where to find it). Anything not on this list, please report.
 
