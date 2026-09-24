@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
 
+using Riptide;
 using KaCMultiplayer.Net;
 using KaCMultiplayer.Net.Messages;
 
@@ -88,6 +89,7 @@ namespace KaCMultiplayer.Dev
             EvictionsGoToTheHouseOwner();
             AbandonedPathsAreClosed();
             BuildingJobsAreRegistered("in the running session");
+            RecycledPendingMessagesDropTheirOldEvents();
         }
 
         // ---- CLASS 1: A PER-LANDMASS ARRAY SIZED BEFORE THE MAP EXISTED -------------------
@@ -1123,6 +1125,67 @@ namespace KaCMultiplayer.Dev
         /// and that it closes a stuck path, driven on a ThreadedPathing of our own with no threads
         /// so the live pathfinder is never touched.
         /// </summary>
+        /// <summary>
+        /// A pending reliable message that has been acked and handed back out to a new message must
+        /// not still answer to the resend events queued against its previous life.
+        ///
+        /// THE CLASS: a pooled object resurrected by a stale event. Riptide guarded its resend
+        /// events by comparing a timestamp, and the timestamp is Peer.CurrentTime, which is read
+        /// once per Update, so every message sent in one frame carries the same one. Recycle an
+        /// instance within that frame and the old event matches the new use, resends it, and
+        /// schedules another event of its own. The instance then has two retry chains, then four,
+        /// and an ordinary stream of reliable messages becomes a send storm. It cost two players
+        /// their session in 0.15.2 and 0.15.3, presenting as the game crawling and then a kick with
+        /// no reason given.
+        ///
+        /// Checked through the token itself rather than by counting sends, because the fault is
+        /// precisely that an old event cannot tell it is old. If either the release or the reuse
+        /// stops moving the token, this fails.
+        /// </summary>
+        private static void RecycledPendingMessagesDropTheirOldEvents()
+        {
+            try
+            {
+                Connection conn = NetClient.client == null ? null : NetClient.client.Connection;
+                if (conn == null)
+                {
+                    log("[SELFTEST] no live connection, skipping the pending message check");
+                    return;
+                }
+
+                Message body = Message.Create(MessageSendMode.Reliable, (ushort)NetMessageId.TreeShake);
+                body.AddUShort(0).AddInt(0);
+
+                PendingMessage first = PendingMessage.Create(1, body, conn);
+                int staleToken = first.RetryToken;
+                first.Clear();                      // acked, back to the pool
+
+                PendingMessage reused = PendingMessage.Create(2, body, conn);
+                int liveToken = reused.RetryToken;
+
+                check("an acked pending message stops answering its own queued events",
+                      staleToken != liveToken);
+
+                // The pool hands the same instance straight back when it is the only one free, which
+                // is the case this is about. Logged rather than asserted: the pool is shared with the
+                // live session and may have others in it.
+                log("[SELFTEST] pending message reuse: same instance = "
+                    + object.ReferenceEquals(first, reused)
+                    + ", token " + staleToken + " -> " + liveToken);
+
+                reused.Clear();
+                check("releasing a pending message moves its token again",
+                      reused.RetryToken != liveToken);
+
+                body.Release();
+            }
+            catch (Exception ex)
+            {
+                check("the pending message check finished without throwing", false);
+                Main.LogEx("[SELFTEST] pending messages", ex);
+            }
+        }
+
         private static void AbandonedPathsAreClosed()
         {
             try

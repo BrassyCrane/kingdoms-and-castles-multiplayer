@@ -19,22 +19,28 @@ namespace Riptide.Utils
     {
         /// <summary>The message to resend.</summary>
         private readonly PendingMessage message;
-        /// <summary>The time at which the resend event was queued.</summary>
-        private readonly long initiatedAtTime;
+
+        /// <summary>
+        /// The message's retry token at the moment this event was queued. The event does nothing
+        /// unless it still matches, which is what keeps exactly one retry chain alive per send.
+        /// See <see cref="PendingMessage.RetryToken"/> for what went wrong when this was a
+        /// timestamp.
+        /// </summary>
+        private readonly int token;
 
         /// <summary>Initializes the event.</summary>
         /// <param name="message">The message to resend.</param>
-        /// <param name="initiatedAtTime">The time at which the resend event was queued.</param>
-        public ResendEvent(PendingMessage message, long initiatedAtTime)
+        /// <param name="token">The message's retry token when the event was queued.</param>
+        public ResendEvent(PendingMessage message, int token)
         {
             this.message = message;
-            this.initiatedAtTime = initiatedAtTime;
+            this.token = token;
         }
 
         /// <inheritdoc/>
         public override void Invoke()
         {
-            if (initiatedAtTime == message.LastSendTime) // If this isn't the case then the message has been resent already
+            if (token == message.RetryToken) // If this isn't the case then the message has moved on without us
                 message.RetrySend();
         }
     }

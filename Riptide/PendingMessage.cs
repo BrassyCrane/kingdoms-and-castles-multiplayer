@@ -16,6 +16,27 @@ namespace Riptide
         /// <summary>The time of the latest send attempt.</summary>
         internal long LastSendTime { get; private set; }
 
+        /// <summary>
+        /// Which send of which use of this instance is currently live. A <see cref="ResendEvent"/>
+        /// carries the token it was queued under and does nothing unless it still matches.
+        ///
+        /// WHY A TOKEN AND NOT THE TIMESTAMP THIS USED TO COMPARE (player report, 0.15.2 and
+        /// 0.15.3: the game crawling, then a kick, with the transport reporting a QUARTER OF A
+        /// MILLION refused sends a second). The old guard was
+        /// <c>initiatedAtTime == message.LastSendTime</c>, and LastSendTime is
+        /// <see cref="Peer.CurrentTime"/>, which is read ONCE PER Update. Every message sent in the
+        /// same frame therefore carries the identical timestamp. Instances are pooled, so a message
+        /// that was acked and released is handed straight back out to a new one, and a resend event
+        /// left over from the previous use compares equal to the new use's timestamp and passes.
+        /// The instance then has two live retry chains, each of which schedules another event, and
+        /// every frame doubles it. That is how an ordinary stream of reliable messages turned into
+        /// a send storm that filled Steam's buffer, jammed the link, and starved the heartbeat
+        /// until the player was dropped.
+        ///
+        /// A counter cannot collide, so a stale event can never resurrect a recycled instance.
+        /// </summary>
+        internal int RetryToken { get; private set; }
+
         /// <summary>The multiplier used to determine how long to wait before resending a pending message.</summary>
         private const float RetryTimeMultiplier = 1.2f;
 
@@ -56,6 +77,7 @@ namespace Riptide
 
             pendingMessage.sendAttempts = 0;
             pendingMessage.wasCleared = false;
+            pendingMessage.RetryToken++;   // anything queued against the previous use is now dead
             return pendingMessage;
         }
 
@@ -102,7 +124,10 @@ namespace Riptide
                 if (LastSendTime + (connection.SmoothRTT < 0 ? 25 : connection.SmoothRTT / 2) <= time) // Avoid triggering a resend if the latest resend was less than half a RTT ago
                     TrySend();
                 else
-                    connection.Peer.ExecuteLater(connection.SmoothRTT < 0 ? 50 : (long)Math.Max(10, connection.SmoothRTT * RetryTimeMultiplier), new ResendEvent(this, time));
+                    // Requeued under the SAME token, not a fresh one. This is the "came round too
+                    // soon" path, so the send it is waiting on has not happened yet and this is
+                    // still the one live event for it.
+                    connection.Peer.ExecuteLater(connection.SmoothRTT < 0 ? 50 : (long)Math.Max(10, connection.SmoothRTT * RetryTimeMultiplier), new ResendEvent(this, RetryToken));
             }
         }
 
@@ -121,8 +146,9 @@ namespace Riptide
 
             LastSendTime = connection.Peer.CurrentTime;
             sendAttempts++;
+            RetryToken++;   // this send owns the chain from here; older events stop matching
 
-            connection.Peer.ExecuteLater(connection.SmoothRTT < 0 ? 50 : (long)Math.Max(10, connection.SmoothRTT * RetryTimeMultiplier), new ResendEvent(this, connection.Peer.CurrentTime));
+            connection.Peer.ExecuteLater(connection.SmoothRTT < 0 ? 50 : (long)Math.Max(10, connection.SmoothRTT * RetryTimeMultiplier), new ResendEvent(this, RetryToken));
         }
 
         /// <summary>Clears the message.</summary>
@@ -130,6 +156,7 @@ namespace Riptide
         {
             connection.Metrics.RollingReliableSends.Add(sendAttempts);
             wasCleared = true;
+            RetryToken++;   // acked: nothing already queued may send this again
             Release();
         }
     }
