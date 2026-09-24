@@ -105,7 +105,11 @@ namespace KaCMultiplayer.Net
             NetRegistry.OnClient<TreeFellMessage>(NetMessageId.TreeFell,
                 (m, ctx) => ApplyTreeFell(m));
 
-            NetRegistry.Register<TreeShakeMessage>(NetMessageId.TreeShake);
+            // UNRELIABLE: a tree wobbling as a woodcutter hits it, nothing more. It is sent from
+            // BaseCutterJob.UpdateWithEmployee, so every woodcutter in the kingdom produces a
+            // steady stream of them, and a lost wobble costs nobody anything. Sending them
+            // reliably meant each one held a retry slot until it was acked.
+            NetRegistry.Register<TreeShakeMessage>(NetMessageId.TreeShake, NetDelivery.Unreliable);
             NetRegistry.OnServer<TreeShakeMessage>(NetMessageId.TreeShake,
                 (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) ApplyTreeShake(m); });
             NetRegistry.OnClient<TreeShakeMessage>(NetMessageId.TreeShake,

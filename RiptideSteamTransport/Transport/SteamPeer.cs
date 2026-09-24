@@ -64,6 +64,23 @@ namespace Riptide.Transports.Steam
         private static int lastRefusalReport;
 
         /// <summary>
+        /// How long to leave a full buffer alone before trying it again.
+        ///
+        /// Steam refuses a send outright once its outgoing buffer for a connection is full, and
+        /// the buffer only drains at the speed of the link. Hammering it meanwhile costs a native
+        /// call and a pinned handle per attempt and gains nothing, and in the 0.15.3 report that
+        /// came to a quarter of a million attempts a second, which is most of a core spent on
+        /// sends that were never going to leave. Backing off lets the buffer actually empty.
+        ///
+        /// ponytail: one window for every connection at once, because a jam is nearly always the
+        /// local uplink. Make it per connection if a session ever has one bad link among several.
+        /// </summary>
+        private const int CongestionBackoffMs = 100;
+
+        /// <summary>Environment.TickCount at which sending may be attempted again.</summary>
+        private static int backoffUntil;
+
+        /// <summary>
         /// Hands one packet to Steam.
         ///
         /// THE 26 MEGABYTE LOG (player report, 0.15.2). Steam refuses a send with LimitExceeded
@@ -77,6 +94,15 @@ namespace Riptide.Transports.Steam
         /// </summary>
         internal void Send(byte[] dataBuffer, int numBytes, HSteamNetConnection toConnection)
         {
+            // Still inside a backoff: the buffer was full a moment ago and will not have drained.
+            // Dropping here is safe, Riptide resends anything reliable and anything unreliable is
+            // superseded by the next one.
+            if (unchecked(Environment.TickCount - backoffUntil) < 0)
+            {
+                refusedSinceReport++;
+                return;
+            }
+
             GCHandle handle = GCHandle.Alloc(dataBuffer, GCHandleType.Pinned);
             IntPtr pDataBuffer = handle.AddrOfPinnedObject();
 
@@ -86,6 +112,9 @@ namespace Riptide.Transports.Steam
 
             if (result == EResult.k_EResultOK)
                 return;
+
+            if (result == EResult.k_EResultLimitExceeded)
+                backoffUntil = Environment.TickCount + CongestionBackoffMs;
 
             refusedSinceReport++;
 
