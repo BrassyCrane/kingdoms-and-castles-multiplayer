@@ -12,11 +12,6 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
   and open the Workshop page for anything they are missing. Worth checking first whether the game's
   mod loader can enable a mod without a restart; if it cannot, the fix button has to apply the
   change and restart the game.
-- **Find what saturates a busy connection.** A player's 0.15.2 log ended with hundreds of thousands
-  of refused sends, all of a fifteen byte message, with no other traffic in between. Raising the
-  outgoing buffer and the timeout stops that costing anyone their session, but something is still
-  sending far more than it needs to. The refusal report now names the message id, so the next log
-  that shows this says which one.
 - **Rebuilding the lobby map throws once when the host opens a lobby** ("regenerating the lobby
   world (size changed)", a NullReferenceException that is caught). Nobody has joined yet at that
   point, but whatever the method does after the throw is skipped.

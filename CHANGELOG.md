@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.4
+
+- The game no longer grinds to a halt and then drops you out of the session. A fault in the
+  networking library made it resend the same messages over and over, twice as many every frame,
+  until nothing else could get through. This is what 0.15.3 raised the timeouts for; the timeouts
+  were only holding the door open longer.
+
 ## 0.15.3
 
 - Players are no longer dropped from a session for no reason. The game pausing for a few seconds,
