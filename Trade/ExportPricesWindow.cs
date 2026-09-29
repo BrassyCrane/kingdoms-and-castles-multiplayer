@@ -34,6 +34,7 @@ namespace KaCMultiplayer.Trade
         private static readonly List<FreeResourceType> rows = new List<FreeResourceType>();
         private static readonly List<TextMeshProUGUI> priceLabels = new List<TextMeshProUGUI>();
         private static readonly List<Button> holdButtons = new List<Button>();
+        private static readonly List<Button[]> priceButtons = new List<Button[]>();
 
         private static readonly Color cText = Color.white;
         private static readonly Color cMuted = new Color(0.49f, 0.53f, 0.58f);
@@ -73,6 +74,7 @@ namespace KaCMultiplayer.Trade
             rows.Clear();
             priceLabels.Clear();
             holdButtons.Clear();
+            priceButtons.Clear();
 
             if (root != null)
             {
@@ -85,8 +87,10 @@ namespace KaCMultiplayer.Trade
 
         private static void Step(FreeResourceType type, int delta)
         {
+            if (!ExportPrices.ForSale(localTeam, type)) return;
+
             int now = ExportPrices.PriceFor(localTeam, type);
-            ExportPrices.SetLocal(localTeam, type, now + delta);
+            ExportPrices.SetLocal(localTeam, type, Mathf.Max(1, now + delta));
             Refresh();
         }
 
@@ -113,6 +117,9 @@ namespace KaCMultiplayer.Trade
                 label.color = selling ? cText : cMuted;
                 label.fontSize = selling ? 20f : 16f;
                 if (i < holdButtons.Count) Popup.SetLabel(holdButtons[i], selling ? "Hold" : "Sell");
+                if (i < priceButtons.Count)
+                    for (int b = 0; b < priceButtons[i].Length; b++)
+                        if (priceButtons[i][b] != null) priceButtons[i][b].interactable = selling;
             }
         }
 
@@ -134,6 +141,7 @@ namespace KaCMultiplayer.Trade
                 rows.Clear();
                 priceLabels.Clear();
                 holdButtons.Clear();
+                priceButtons.Clear();
 
                 string kingdom = Main.KingdomNameForTeam(localTeam);
                 Popup.Find<TextMeshProUGUI>(root, "Window/Title").text =
@@ -155,10 +163,14 @@ namespace KaCMultiplayer.Trade
                     // Captured per row, which is the whole reason this is a local: a loop variable
                     // shared by every handler would leave all the buttons editing the last resource.
                     FreeResourceType captured = type;
-                    Popup.OnClick(r.Find("Minus10").GetComponent<Button>(), delegate { Step(captured, -10); });
-                    Popup.OnClick(r.Find("Minus").GetComponent<Button>(), delegate { Step(captured, -1); });
-                    Popup.OnClick(r.Find("Plus").GetComponent<Button>(), delegate { Step(captured, 1); });
-                    Popup.OnClick(r.Find("Plus10").GetComponent<Button>(), delegate { Step(captured, 10); });
+                    Button minus10 = r.Find("Minus10").GetComponent<Button>();
+                    Button minus = r.Find("Minus").GetComponent<Button>();
+                    Button plus = r.Find("Plus").GetComponent<Button>();
+                    Button plus10 = r.Find("Plus10").GetComponent<Button>();
+                    Popup.OnClick(minus10, delegate { Step(captured, -10); });
+                    Popup.OnClick(minus, delegate { Step(captured, -1); });
+                    Popup.OnClick(plus, delegate { Step(captured, 1); });
+                    Popup.OnClick(plus10, delegate { Step(captured, 10); });
 
                     Button hold = r.Find("Hold").GetComponent<Button>();
                     Popup.OnClick(hold, delegate { Withhold(captured); });
@@ -166,9 +178,13 @@ namespace KaCMultiplayer.Trade
                     rows.Add(type);
                     priceLabels.Add(r.Find("Price").GetComponent<TextMeshProUGUI>());
                     holdButtons.Add(hold);
+                    priceButtons.Add(new Button[] { minus10, minus, plus, plus10 });
+
+                    KacGameArt.SkinRow(row);
                 }
 
                 Popup.OnClick(Popup.Find<Button>(root, "Window/Close"), Close);
+                KacGameArt.SkinWindow(root);
             }
             catch (Exception e)
             {

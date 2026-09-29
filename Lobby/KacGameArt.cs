@@ -137,6 +137,17 @@ namespace KaCMultiplayer.Lobby
             catch (Exception e) { NetLog.Error("skinning a diplomacy row", e); }
         }
 
+        /// <summary>Applies the game's own art to one named action button in a row.</summary>
+        public static void SkinActionButton(GameObject row, string name)
+        {
+            EnsureFound();
+            if (!found || row == null) return;
+
+            Transform node = row.transform.Find(name);
+            if (node == null) node = row.transform.Find("Actions/" + name);
+            if (node != null) SkinButton(node.GetComponent<Button>());
+        }
+
         /// <summary>
         /// Puts the game's button art on every button under a window, and its fonts on the text, the
         /// biggest text getting the title font.

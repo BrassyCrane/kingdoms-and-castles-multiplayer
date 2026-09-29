@@ -322,6 +322,8 @@ namespace KaCMultiplayer.Lobby
 
             // Last, so the cloned Demand and Send Aid buttons get the game's art too.
             KacGameArt.SkinRow(row);
+            KacGameArt.SkinActionButton(row, "Demand");
+            KacGameArt.SkinActionButton(row, "SendAid");
         }
 
         /// <summary>
@@ -377,6 +379,8 @@ namespace KaCMultiplayer.Lobby
             Wire(row, "SendAid", delegate { ResourcePicker.Open(localTeam, target, true); });
 
             KacGameArt.SkinRow(row);
+            KacGameArt.SkinActionButton(row, "Demand");
+            KacGameArt.SkinActionButton(row, "SendAid");
         }
 
         /// <summary>Redraws the list now, after an action this machine applied itself.</summary>
