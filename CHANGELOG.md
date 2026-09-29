@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.16.1
+
+- Leaving a game and coming back gives you your own kingdom as you left it. Since 0.15.0 the host
+  was meant to save each player's kingdom from that player's own copy, but every copy was thrown
+  away on arrival, so a returning player got the host's guess of their town instead.
+
+By Bill Kerman:
+- The Ctrl + Shift + E window and the Demand and Send Aid buttons use the game's own art again.
+- An export price can no longer be set to 0, and the price buttons are greyed out for goods you
+  are holding back.
+
 ## 0.16.0
 
 AI kingdoms, by Bill Kerman:

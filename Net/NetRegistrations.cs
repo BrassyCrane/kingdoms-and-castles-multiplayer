@@ -291,7 +291,9 @@ namespace KaCMultiplayer.Net
             // A kingdom copy only ever travels upward, and a request only downward.
             NetRegistry.Register<KingdomMirrorMessage>(NetMessageId.KingdomMirror);
             NetRegistry.OnServer<KingdomMirrorMessage>(NetMessageId.KingdomMirror,
-                (m, ctx) => KingdomMirror.Receive(m));
+                // Stamped here from the connection it arrived on: the guest never fills Origin in,
+                // and Receive files each copy under the sender's Steam id.
+                (m, ctx) => { m.Origin = ctx.SenderId; KingdomMirror.Receive(m); });
 
             NetRegistry.Register<KingdomMirrorRequestMessage>(NetMessageId.KingdomMirrorRequest);
             NetRegistry.OnClient<KingdomMirrorRequestMessage>(NetMessageId.KingdomMirrorRequest,

@@ -5,6 +5,10 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
 
 ## Next
 
+- **Find why a guest can still time out of a long game.** Seen on 0.16.0 after about an hour, year
+  25: the host ran at full speed and logged nothing wrong, the guest simply went silent for 30
+  seconds. The guest's own log decides whether their game froze or their connection dropped.
+
 - **Check everyone is running the same mods when a game is created or joined.** Different mod lists
   between host and guest desync the session in ways that look like our own bugs. Send the enabled
   mod list (Workshop id and version) with the join handshake, compare it, and if it differs show the
