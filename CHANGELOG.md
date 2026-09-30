@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.16.2
+## 0.16.3
 
 - One log to send: output.txt now also holds the game's warnings and errors, so a bug report no
   longer needs Player.log as well.

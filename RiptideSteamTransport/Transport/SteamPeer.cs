@@ -63,8 +63,8 @@ namespace Riptide.Transports.Steam
         /// </summary>
         public static string LinkStats(HSteamNetConnection connection)
         {
-            SteamNetConnectionRealTimeStatus_t s = default;
-            SteamNetConnectionRealTimeLaneStatus_t lanes = default;
+            SteamNetConnectionRealTimeStatus_t s = default(SteamNetConnectionRealTimeStatus_t);
+            SteamNetConnectionRealTimeLaneStatus_t lanes = default(SteamNetConnectionRealTimeLaneStatus_t);
             if (SteamNetworkingSockets.GetConnectionRealTimeStatus(connection, ref s, 0, ref lanes) != EResult.k_EResultOK)
                 return "no status";
             return $"ping={s.m_nPing}ms queue={(long)s.m_usecQueueTime / 1000}ms pending={(s.m_cbPendingUnreliable + s.m_cbPendingReliable) / 1024}KB "
