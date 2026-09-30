@@ -102,6 +102,18 @@ namespace Riptide.Transports.Steam
             }
         }
 
+        /// <summary>
+        /// Host: Steam's live numbers for every guest's connection, one per guest, for the
+        /// heartbeat line. Shows which guest's link is backing up when a session starts to lag.
+        /// </summary>
+        public string DescribeLinks()
+        {
+            var parts = new System.Collections.Generic.List<string>();
+            foreach (SteamConnection connection in connections.Values)
+                parts.Add(connection.SteamId + " " + LinkStats(connection.SteamNetConnection));
+            return parts.Count == 0 ? "no guests" : string.Join(" | ", parts.ToArray());
+        }
+
         public void Poll()
         {
             foreach (SteamConnection connection in connections.Values)

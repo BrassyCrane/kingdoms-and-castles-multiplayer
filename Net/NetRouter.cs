@@ -183,6 +183,29 @@ namespace KaCMultiplayer.Net
             return local != 0;
         }
 
+        /// <summary>Bytes encoded per message type since the last traffic report.</summary>
+        private static readonly System.Collections.Generic.Dictionary<NetMessageId, int> traffic =
+            new System.Collections.Generic.Dictionary<NetMessageId, int>();
+
+        /// <summary>
+        /// The five message types that sent the most since the last call, in KB, then starts
+        /// counting again. Logged with the heartbeat, so when a link backs up the log says which
+        /// message is filling it instead of leaving us to guess. Counts once per encode, so a
+        /// host broadcast to several guests counts once.
+        /// </summary>
+        public static string TakeTrafficReport()
+        {
+            var list = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<NetMessageId, int>>(traffic);
+            traffic.Clear();
+            list.Sort((a, b) => b.Value.CompareTo(a.Value));
+            int total = 0;
+            foreach (var kv in list) total += kv.Value;
+            var top = new System.Text.StringBuilder("total=" + (total / 1024) + "KB");
+            for (int i = 0; i < list.Count && i < 5; i++)
+                top.Append(" " + list[i].Key + "=" + (list[i].Value / 1024) + "KB");
+            return top.ToString();
+        }
+
         private static bool TryEncode(INetMessage message, out Message encoded)
         {
             encoded = null;
@@ -201,6 +224,9 @@ namespace KaCMultiplayer.Net
 
                 encoded = Message.Create(mode, (ushort)message.Id);
                 message.Serialize(encoded);
+                int sofar;
+                traffic.TryGetValue(message.Id, out sofar);
+                traffic[message.Id] = sofar + encoded.BytesInUse;
                 return true;
             }
             catch (Exception ex)

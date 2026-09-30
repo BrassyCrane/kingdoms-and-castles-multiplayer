@@ -975,6 +975,28 @@ namespace KaCMultiplayer
             catch (Exception e) { helper.Log("[SPEED] pause error: " + e.Message); }
         }
 
+        /// <summary>The last Unity message copied, and how many identical ones followed it.</summary>
+        private static string _lastUnityLog;
+        private static int _unityLogRepeats;
+
+        /// <summary>
+        /// Copies Unity's warnings, errors and exceptions (the game's, Steam transport's and ours)
+        /// into output.txt, so a player sends one file instead of output.txt plus Player.log.
+        /// Why: the 0.16.0 hour-long kick could not be pinned down because Steam's refused-send
+        /// warnings only ever reached Player.log. Plain Debug.Log lines stay out, they are the
+        /// game's own chatter. A message repeating every frame is written once, then counted.
+        /// </summary>
+        private static void CopyUnityLog(string message, string stackTrace, UnityEngine.LogType type)
+        {
+            if (type == UnityEngine.LogType.Log || helper == null) return;
+            if (message == _lastUnityLog) { _unityLogRepeats++; return; }
+            if (_unityLogRepeats > 0) helper.Log($"[unity] (previous line repeated {_unityLogRepeats} more time(s))");
+            _lastUnityLog = message;
+            _unityLogRepeats = 0;
+            string trace = type == UnityEngine.LogType.Exception || type == UnityEngine.LogType.Error ? "\n" + stackTrace : "";
+            helper.Log($"[unity {type}] {message}{trace}");
+        }
+
         private void SceneLoaded(KCModHelper helper)
         {
             helper.Log("SceneLoaded: wiring Riptide logging and Steam bootstrap");
@@ -1478,6 +1500,8 @@ namespace KaCMultiplayer
                     }
                     // The freeze = pawns stop while the clock runs, so watch posSum vs year: if 'year' keeps
                     // climbing but 'posSum' stops changing, the villager sim froze, that heartbeat is the moment.
+                    Main.helper.Log("[LINK] " + (NetHost.IsRunning ? steamServer.DescribeLinks() : steamClient.DescribeLink())
+                                    + " | sent " + KaCMultiplayer.Net.NetRouter.TakeTrafficReport());
                     Main.helper.Log($"[HEARTBEAT] year={year} villagers={villagers} posSum={posSum:F1} timeScale={Time.timeScale} frame={Time.frameCount} fixedTicks={FixedUpdateInterval} tickAllPerFrame={TickAllCallsLastFrame} season={(Weather.inst != null ? Weather.inst.season.ToString() : "?")} dragons={(DragonSpawn.inst != null && DragonSpawn.inst.currentDragons != null ? DragonSpawn.inst.currentDragons.Count : -1)} dragonFlight={KaCMultiplayer.Combat.DragonFlightSync.Published}/{KaCMultiplayer.Combat.DragonFlightSync.Applied}");
                 }
                 catch (Exception e) { Main.helper.Log("[HEARTBEAT] error: " + e.Message); }
@@ -2018,6 +2042,8 @@ namespace KaCMultiplayer
             {
 
                 Main.helper = helper;
+                Application.logMessageReceived -= CopyUnityLog;
+                Application.logMessageReceived += CopyUnityLog;
 
                 // Dev switches can also be turned on by a LAUNCH ARGUMENT, which is what makes
                 // testing possible without an upload. The flags below default false and stay false

@@ -151,9 +151,18 @@ namespace Riptide.Transports.Steam
                     break;
 
                 default:
-                    Debug.Log($"{LogName}: Connection state changed - {callback.m_info.m_eState} | {callback.m_info.m_szEndDebug}");
+                    Debug.LogWarning($"{LogName}: Connection state changed - {callback.m_info.m_eState} | {callback.m_info.m_szEndDebug}");
                     break;
             }
+        }
+
+        /// <summary>
+        /// Guest: Steam's live numbers for our connection to the host, for the heartbeat line.
+        /// Shows our outgoing queue growing before the host gives up on us.
+        /// </summary>
+        public string DescribeLink()
+        {
+            return steamConnection == null ? "not connected" : LinkStats(steamConnection.SteamNetConnection);
         }
 
         public void Poll()

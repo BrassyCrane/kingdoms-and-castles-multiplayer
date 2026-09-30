@@ -53,6 +53,26 @@ namespace Riptide.Transports.Steam
         }
 
         /// <summary>
+        /// One connection's live numbers from Steam, for the heartbeat line: round trip, how long a
+        /// packet now waits in our outgoing queue, bytes waiting, and the rate each way.
+        ///
+        /// Why: the 0.16.0 hour-long kick had both games running smoothly, yet the host's chat took
+        /// about 16 seconds to arrive, which is exactly a full 4 MB send buffer draining at Steam's
+        /// fixed 256 KB/s. Nothing in the log could show that directly. With this, a queue building
+        /// up is visible minutes before it costs anyone the connection.
+        /// </summary>
+        public static string LinkStats(HSteamNetConnection connection)
+        {
+            SteamNetConnectionRealTimeStatus_t s = default;
+            SteamNetConnectionRealTimeLaneStatus_t lanes = default;
+            if (SteamNetworkingSockets.GetConnectionRealTimeStatus(connection, ref s, 0, ref lanes) != EResult.k_EResultOK)
+                return "no status";
+            return $"ping={s.m_nPing}ms queue={(long)s.m_usecQueueTime / 1000}ms pending={(s.m_cbPendingUnreliable + s.m_cbPendingReliable) / 1024}KB "
+                 + $"out={s.m_flOutBytesPerSec / 1024:F0}KB/s in={s.m_flInBytesPerSec / 1024:F0}KB/s quality={s.m_flConnectionQualityLocal:F2}/{s.m_flConnectionQualityRemote:F2} "
+                 + $"refused={refusedSinceReport}";
+        }
+
+        /// <summary>
         /// How long to stay quiet between refused-send reports. A refusal is not a one-off: when
         /// Steam's outgoing buffer fills, EVERY send is refused until it drains, which is thousands
         /// a second.

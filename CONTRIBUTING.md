@@ -21,8 +21,8 @@ Workshop item with credit to you, in the change notes and in the Git history.
 3. **It follows the house style.** Every method gets a comment saying what it does and **why**; read
    any file in `Net/` or `Combat/` for the tone. Loops over per-player or per-entity data guard each
    item, and loops over an `ArrayExt` stop at `.Count`, never `.data.Length`.
-4. **Logs.** If you found the bug from a log, quote the relevant lines. Check `Player.log`, not only
-   `output.txt`: many exceptions only ever reach `Player.log`.
+4. **Logs.** If you found the bug from a log, quote the relevant lines. `output.txt` carries the
+   game's warnings, errors and exceptions too; `Player.log` is only needed after a crash to desktop.
 
 ## Rights
 

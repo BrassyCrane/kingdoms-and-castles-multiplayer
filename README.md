@@ -19,15 +19,15 @@ What changed in each version is in [CHANGELOG.md](CHANGELOG.md), and what we pla
 
 ## Reporting a bug
 
-A report with logs gets fixed. A report without them usually cannot be. Please attach **both**:
+A report with a log gets fixed. A report without one usually cannot be. Please attach
+**output.txt**, the mod's log: in Steam, right-click Kingdoms and Castles, *Manage > Browse local
+files*, go up to `steamapps\workshop\content\569480\3751021307\`. It grows across runs, so the end of
+the file is the part that matters. It also holds the game's own warnings and errors, so it is the
+only file needed. If more than one player was affected, send each player's output.txt.
 
-- **Player.log**, which is where most errors actually end up. To find it, press **Windows key + R**,
-  paste `%USERPROFILE%\AppData\LocalLow\LionShield\Kingdoms and Castles` and press Enter;
-  Player.log is in the folder that opens. Every launch overwrites it, so copy it **before**
-  starting the game again.
-- **output.txt**, the mod's own log: in Steam, right-click Kingdoms and Castles, *Manage >
-  Browse local files*, go up to `steamapps\workshop\content\569480\3751021307\`. It grows across
-  runs, so the end of the file is the part that matters.
+Only if the game crashed to the desktop, add **Player.log** as well: press **Windows key + R**,
+paste `%USERPROFILE%\AppData\LocalLow\LionShield\Kingdoms and Castles` and press Enter. Every
+launch overwrites it, so copy it **before** starting the game again.
 
 Say how many players were in the session, who was hosting, and whether it was a new game or a
 loaded save. Open an issue here, or comment on the Workshop page.

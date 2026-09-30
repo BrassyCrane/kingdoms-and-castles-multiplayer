@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.16.2
+
+- One log to send: output.txt now also holds the game's warnings and errors, so a bug report no
+  longer needs Player.log as well.
+- The log shows each connection's ping, send queue and data rate, and which messages send the most,
+  every 15 seconds. This is to find why a player can drop out of a long game with "Timed out".
+
 ## 0.16.1
 
 - Leaving a game and coming back gives you your own kingdom as you left it. Since 0.15.0 the host

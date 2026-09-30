@@ -1,7 +1,7 @@
 # Known issues
 
-Problems we know about in the current version, **0.16.1**. If you run into one of these, a report is
-still useful, especially with your Player.log attached (see the [README](README.md#reporting-a-bug)
+Problems we know about in the current version, **0.16.2**. If you run into one of these, a report is
+still useful, especially with your output.txt attached (see the [README](README.md#reporting-a-bug)
 for where to find it). Anything not on this list, please report.
 
 Each entry says what you see, and what to do about it if there is a workaround.
@@ -14,8 +14,9 @@ Each entry says what you see, and what to do about it if there is a workaround.
 ## Staying connected
 
 - **A player can still drop out of a long game with "Timed out"**, seen once after about an hour
-  (year 25) on 0.16.0 while the host ran smoothly. Rejoin and your kingdom comes back. If it happens
-  to you, please send the log from BOTH players, the one who dropped matters most.
+  (year 25) on 0.16.0 while both games ran smoothly: the connection between them backed up until
+  messages took over 15 seconds to arrive. Rejoin and your kingdom comes back. If it happens to you,
+  please send output.txt from BOTH players.
 
 ## The map
 
