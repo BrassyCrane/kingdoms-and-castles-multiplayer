@@ -5,12 +5,6 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
 
 ## Next
 
-- **Find why a guest can still time out of a long game.** Seen on 0.16.0 after about an hour, year
-  25. Both logs are in: neither game froze. The link backed up (the host's chat took about 16
-  seconds to reach the guest, a full 4 MB send buffer at Steam's fixed 256 KB/s) until the host
-  stopped hearing the guest's heartbeat. 0.16.3 logs a [LINK] line every 15 seconds with the queue,
-  rate and top senders; the next report says what fills the link.
-
 - **Check everyone is running the same mods when a game is created or joined.** Different mod lists
   between host and guest desync the session in ways that look like our own bugs. Send the enabled
   mod list (Workshop id and version) with the join handshake, compare it, and if it differs show the

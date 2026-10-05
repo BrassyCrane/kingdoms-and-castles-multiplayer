@@ -39,8 +39,8 @@ namespace KaCMultiplayer.Net
     ///
     /// ONE TRANSFER PER SAVE, NOT PER TICK. The host asks for a fresh copy right after it saves, so
     /// each kingdom is packed once per autosave (a season) rather than continuously, and the copy
-    /// waiting for the next save is at most one season old. Chunks are paced exactly like the save
-    /// transfer, for the same reason: a flood of reliable messages turns into a resend storm.
+    /// waiting for the next save is at most one season old. Chunks are paced well under the
+    /// link's rate (see ChunksPerPump): a flood of reliable messages turns into a resend storm.
     /// </summary>
     public static class KingdomMirror
     {
@@ -48,7 +48,19 @@ namespace KaCMultiplayer.Net
         /// with room for the header.</summary>
         private const int ChunkChars = 800;
 
-        private const int ChunksPerPump = 16;
+        /// <summary>
+        /// Chunks sent per interval. Two every 20 ms is at most about 80 KB/s, a third of what
+        /// Steam will carry (a fixed 256 KB/s), so the copy never queues behind itself and the
+        /// game's own messages keep flowing beside it. A 300 KB kingdom still arrives in under
+        /// ten seconds, and nothing needs it sooner than the next autosave.
+        ///
+        /// THIS WAS 16, which is about 400 KB/s, and that was the hour-long "Timed out" kick
+        /// (0.16.0 and 0.16.3 reports). A small kingdom was gone before it mattered. At about
+        /// 200 KB, which is roughly year 20, the copy outran the link, every chunk was resent
+        /// while it waited, and the link never recovered. Both reports died within two minutes of
+        /// the first copy over 200 KB.
+        /// </summary>
+        private const int ChunksPerPump = 2;
         private const float PumpIntervalSeconds = 0.02f;
 
         /// <summary>Host side: the latest kingdom each player sent, by Steam id.</summary>

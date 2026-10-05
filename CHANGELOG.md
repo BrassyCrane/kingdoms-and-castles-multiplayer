@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.4
+
+- Fixed players dropping out of a long game with "Timed out", usually around year 20 to 25, once
+  their kingdom had grown large.
+- The game sends far less data between players in normal play.
+
 ## 0.16.3
 
 - One log to send: output.txt now also holds the game's warnings and errors, so a bug report no

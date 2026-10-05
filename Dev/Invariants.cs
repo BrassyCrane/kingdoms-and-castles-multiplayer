@@ -90,6 +90,7 @@ namespace KaCMultiplayer.Dev
             AbandonedPathsAreClosed();
             BuildingJobsAreRegistered("in the running session");
             RecycledPendingMessagesDropTheirOldEvents();
+            AJammedLinkCanDrain();
 
             // Last, deliberately: if the guard it checks is ever missing, the act of checking
             // rebuilds the world this suite is running in, and every check after it would fail for
@@ -1189,6 +1190,31 @@ namespace KaCMultiplayer.Dev
                 check("the pending message check finished without throwing", false);
                 Main.LogEx("[SELFTEST] pending messages", ex);
             }
+        }
+
+        /// <summary>
+        /// A jammed link must be allowed to drain.
+        ///
+        /// Two things kept one jammed until the guest timed out (0.16.0 and 0.16.3 reports): an
+        /// unanswered message was sent again at the same short interval forever, and the tax rate
+        /// went out every frame whether it had changed or not. If the wait stops growing, or an
+        /// unchanged rate stops being skipped, this fails.
+        /// </summary>
+        private static void AJammedLinkCanDrain()
+        {
+            check("the wait before a resend grows with every attempt",
+                  PendingMessage.RetryDelay(23, 1) < PendingMessage.RetryDelay(23, 2)
+                  && PendingMessage.RetryDelay(23, 2) < PendingMessage.RetryDelay(23, 4));
+            check("the wait before a resend stops growing at its limit",
+                  PendingMessage.RetryDelay(23, 255) == PendingMessage.MaxRetryDelayMs);
+
+            // Island -1 is never sent for real, so this cannot disturb a live rate.
+            bool first = Main.PlayerSetTaxRateHook.ShouldSend(-1, 1f, 100f);
+            bool same = Main.PlayerSetTaxRateHook.ShouldSend(-1, 1f, 101f);
+            bool changed = Main.PlayerSetTaxRateHook.ShouldSend(-1, 2f, 102f);
+            bool repeated = Main.PlayerSetTaxRateHook.ShouldSend(-1, 2f, 200f);
+            check("an unchanged tax rate is sent once, a changed or old one again",
+                  first && !same && changed && repeated);
         }
 
         // ---- CLASS 18: A WORLD SEED ARRIVING AFTER PLAY BEGAN ----------------------------

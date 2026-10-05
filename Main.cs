@@ -8129,14 +8129,46 @@ namespace KaCMultiplayer
         /// of our kingdom at 0: our homes were taxed wrong there, and the host saved 0 for us.
         /// Only the local player's own changes are sent; applying someone else's rate also runs
         /// SetTaxRate, on their Player, and must not echo.
+        ///
+        /// The game calls SetTaxRate every frame for every island, changed or not, so this used to
+        /// send a few hundred reliable messages a second: most of the session's traffic, and the
+        /// backlog that kept a jammed link jammed (the hour-long "Timed out" kick). A rate now goes
+        /// out when it changes, and again every few seconds so a player who joins late still
+        /// hears it.
         /// </summary>
         [HarmonyPatch(typeof(Player), "SetTaxRate")]
         public class PlayerSetTaxRateHook
         {
+            /// <summary>How often an unchanged rate is repeated, for late joiners.</summary>
+            private const float RepeatSeconds = 5f;
+
+            /// <summary>The rate last sent for each island, and when.</summary>
+            private static readonly Dictionary<int, float> sentRate = new Dictionary<int, float>();
+            private static readonly Dictionary<int, float> sentAt = new Dictionary<int, float>();
+
+            /// <summary>
+            /// Whether this rate is news: it differs from the last one sent for the island, or that
+            /// one is old enough to repeat. Remembers it when the answer is yes. Without this every
+            /// frame of every island is a reliable message to every player.
+            /// </summary>
+            internal static bool ShouldSend(int landMass, float taxRate, float now)
+            {
+                float rate, at;
+                if (sentRate.TryGetValue(landMass, out rate) && rate == taxRate
+                    && sentAt.TryGetValue(landMass, out at) && now - at < RepeatSeconds)
+                    return false;
+
+                sentRate[landMass] = taxRate;
+                sentAt[landMass] = now;
+                return true;
+            }
+
+            /// <summary>Sends our own rate for one island on, when it is news.</summary>
             public static void Postfix(Player __instance, int landMass, float taxRate)
             {
                 if (!NetClient.client.IsConnected || __instance == null || __instance != Player.inst) return;
                 if (landMass < 0) return;
+                if (!ShouldSend(landMass, taxRate, UnityEngine.Time.unscaledTime)) return;
                 try
                 {
                     KaCMultiplayer.Net.NetRouter.Send(new KaCMultiplayer.Net.Messages.TaxRateMessage { LandMass = landMass, Rate = taxRate });

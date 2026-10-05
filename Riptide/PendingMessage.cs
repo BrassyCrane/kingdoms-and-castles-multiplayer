@@ -40,6 +40,34 @@ namespace Riptide
         /// <summary>The multiplier used to determine how long to wait before resending a pending message.</summary>
         private const float RetryTimeMultiplier = 1.2f;
 
+        /// <summary>The longest wait between two sends of the same message, in milliseconds.</summary>
+        internal const int MaxRetryDelayMs = 2000;
+
+        /// <summary>
+        /// How long to wait before sending an unanswered message again: about one round trip
+        /// after the first send, then double that after every further attempt, up to
+        /// <see cref="MaxRetryDelayMs"/>.
+        ///
+        /// WHY IT DOUBLES (player reports, 0.16.0 and 0.16.3: a guest dropped with "Timed out"
+        /// after about an hour while both games ran smoothly). The wait used to be the same short
+        /// one every time, about 28 ms on a good link. That is right for a lost packet and wrong
+        /// for a late one. When a burst leaves packets waiting in Steam's outgoing queue, the
+        /// answers come back late, so EVERY waiting message was sent again 35 times a second, each
+        /// copy joining the same queue and making the answers later still. Steam carries a fixed
+        /// 256 KB/s, so past a certain burst size the queue never emptied again: both sides sat at
+        /// the full rate sending copies of old messages until the heartbeat could not get through.
+        /// Doubling the wait means a late answer costs a few extra copies instead of hundreds, and
+        /// a jam drains instead of feeding itself.
+        /// </summary>
+        internal static long RetryDelay(short smoothRtt, int attempts)
+        {
+            long first = smoothRtt < 0 ? 50 : (long)Math.Max(10, smoothRtt * RetryTimeMultiplier);
+            long delay = first;
+            for (int i = 1; i < attempts && delay < MaxRetryDelayMs; i++)
+                delay *= 2;
+            return Math.Max(first, Math.Min(delay, MaxRetryDelayMs));
+        }
+
         /// <summary>A pool of reusable <see cref="PendingMessage"/> instances.</summary>
         private static readonly List<PendingMessage> pool = new List<PendingMessage>();
 
@@ -127,7 +155,7 @@ namespace Riptide
                     // Requeued under the SAME token, not a fresh one. This is the "came round too
                     // soon" path, so the send it is waiting on has not happened yet and this is
                     // still the one live event for it.
-                    connection.Peer.ExecuteLater(connection.SmoothRTT < 0 ? 50 : (long)Math.Max(10, connection.SmoothRTT * RetryTimeMultiplier), new ResendEvent(this, RetryToken));
+                    connection.Peer.ExecuteLater(RetryDelay(connection.SmoothRTT, sendAttempts), new ResendEvent(this, RetryToken));
             }
         }
 
@@ -148,7 +176,7 @@ namespace Riptide
             sendAttempts++;
             RetryToken++;   // this send owns the chain from here; older events stop matching
 
-            connection.Peer.ExecuteLater(connection.SmoothRTT < 0 ? 50 : (long)Math.Max(10, connection.SmoothRTT * RetryTimeMultiplier), new ResendEvent(this, RetryToken));
+            connection.Peer.ExecuteLater(RetryDelay(connection.SmoothRTT, sendAttempts), new ResendEvent(this, RetryToken));
         }
 
         /// <summary>Clears the message.</summary>
