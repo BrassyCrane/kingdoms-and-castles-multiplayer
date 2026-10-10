@@ -1,10 +1,16 @@
 # Known issues
 
-Problems we know about in the current version, **0.16.4**. If you run into one of these, a report is
+Problems we know about in the current version, **0.16.5**. If you run into one of these, a report is
 still useful, especially with your output.txt attached (see the [README](README.md#reporting-a-bug)
 for where to find it). Anything not on this list, please report.
 
 Each entry says what you see, and what to do about it if there is a workaround.
+
+## Mac
+
+- **The Mac version of the game is an older build than the Windows one.** The error that stopped
+  the mod loading there is fixed in 0.16.5, but a Mac player in a game with Windows players has not
+  been tried yet. If it goes wrong for you, please send your output.txt.
 
 ## Loading a saved game
 
