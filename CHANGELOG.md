@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.5
+
+- Fixed an error that stopped the mod loading on the Mac version of the game.
+
 ## 0.16.4
 
 - Fixed players dropping out of a long game with "Timed out", usually around year 20 to 25, once

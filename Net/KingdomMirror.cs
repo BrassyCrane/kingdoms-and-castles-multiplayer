@@ -92,7 +92,7 @@ namespace KaCMultiplayer.Net
         {
             if (sentOnce || NetRouter.IsServer) return;
             if (!NetClient.client.IsConnected) return;
-            if (GameState.inst == null || !GameState.inst.IsPlayMode()) return;
+            if (GameState.inst == null || !Main.InPlayMode()) return;
 
             sentOnce = true;
             SendOurs();
@@ -148,7 +148,7 @@ namespace KaCMultiplayer.Net
             {
                 if (NetRouter.IsServer) return;                       // the host has its own
                 if (Player.inst == null) return;
-                if (GameState.inst == null || !GameState.inst.IsPlayMode()) return;
+                if (GameState.inst == null || !Main.InPlayMode()) return;
 
                 string json = ModSaveData.SerializeKingdom(new Player.PlayerSaveData().Pack(Player.inst));
 

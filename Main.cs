@@ -968,7 +968,7 @@ namespace KaCMultiplayer
             try
             {
                 if (SpeedControlUI.inst == null) return;              // no game running
-                if (GameState.inst != null && !GameState.inst.IsPlayMode()) return;
+                if (GameState.inst != null && !Main.InPlayMode()) return;
                 SpeedControlUI.inst.SetSpeed(0);
                 helper.Log($"[SPEED] paused: {reason}");
             }
@@ -1440,7 +1440,7 @@ namespace KaCMultiplayer
             // Has this session reached the world yet. See PlayHasBegun for why the answer has to
             // be remembered rather than asked for.
             if (!PlayHasBegun && InMultiplayer
-                && GameState.inst != null && GameState.inst.IsPlayMode())
+                && GameState.inst != null && Main.InPlayMode())
             {
                 PlayHasBegun = true;
                 helper.Log("[net] play has begun; joiners now get the live world, not a map seed");
@@ -1968,12 +1968,27 @@ namespace KaCMultiplayer
         {
             get
             {
-                if (GameState.inst != null && GameState.inst.IsPlayMode()) return true;
+                if (GameState.inst != null && Main.InPlayMode()) return true;
                 return inSessionWorld && NetRouter.IsConnected;
             }
         }
 
         private static bool inSessionWorld;
+
+        /// <summary>
+        /// True while the world is on screen and running, false behind any menu. It is the game's
+        /// own GameState.IsPlayMode() written out, the same comparison of the same two fields.
+        ///
+        /// The mod calls this instead because the macOS build of the game is an older one that has
+        /// no IsPlayMode method, and the game compiles the mod on each player's machine: one
+        /// missing method and a Mac player has no multiplayer menu at all, so they can neither
+        /// host nor join. The two fields are what every mode switch in the game is built on.
+        /// </summary>
+        public static bool InPlayMode()
+        {
+            GameState gs = GameState.inst;
+            return gs != null && gs.CurrMode == gs.playingMode;
+        }
 
         /// <summary>
         /// Keeps <see cref="GameInProgress"/> in step. Called for every menu change, the game's

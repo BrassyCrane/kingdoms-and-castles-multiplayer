@@ -91,7 +91,7 @@ namespace KaCMultiplayer.Dev
         {
             if (!Main.DevTestBuild) return;
 
-            if (GameState.inst == null || !GameState.inst.IsPlayMode() || !NetClient.client.IsConnected)
+            if (GameState.inst == null || !Main.InPlayMode() || !NetClient.client.IsConnected)
             {
                 Log("not in a running session, nothing to check");
                 return;
@@ -196,7 +196,7 @@ namespace KaCMultiplayer.Dev
                     break;
 
                 case Phase.WaitingForPlay:
-                    if (GameState.inst.IsPlayMode())
+                    if (Main.InPlayMode())
                     {
                         settleFrames = SettleFrames;
                         Enter(Phase.Settling);

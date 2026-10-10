@@ -767,7 +767,7 @@ namespace KaCMultiplayer.Net
 
                     // StartGame enters playing mode before it can throw, so if we got there the
                     // world is already up and re-entering the mode would run its setup twice.
-                    inPlayMode = GameState.inst.IsPlayMode();
+                    inPlayMode = Main.InPlayMode();
 
                     NetLog.Info("StartGame stopped at the rival-kingdom setup, as expected in "
                                 + "multiplayer (" + cause.GetType().Name + ": " + cause.Message
@@ -2477,7 +2477,7 @@ namespace KaCMultiplayer.Net
             // prefab and is gone once the session starts, so in-game these notices were reaching the
             // handler and then landing nowhere a player could see. The game's own event feed is the
             // right surface once play has begun; the lobby list is right before it.
-            if (GameState.inst != null && GameState.inst.IsPlayMode())
+            if (GameState.inst != null && Main.InPlayMode())
             {
                 // A distinct id per notice: TryLog suppresses a repeat of the same id inside its
                 // interval, and these are one-off announcements rather than recurring warnings.
@@ -2514,7 +2514,7 @@ namespace KaCMultiplayer.Net
             // Same split as the notices above, and for the same reason: chat rows are instantiated
             // into the lobby prefab, which is gone once play starts, so a message sent mid-game
             // reached this handler and then landed nowhere anybody could see.
-            if (GameState.inst != null && GameState.inst.IsPlayMode())
+            if (GameState.inst != null && Main.InPlayMode())
             {
                 InGameChat.Add(m.PlayerName, m.Text, m.Origin == NetRouter.LocalClientId);
                 return;

@@ -25,7 +25,7 @@ namespace KaCMultiplayer.Lobby
             // Never before the world is running. A player still receiving it has no kingdom to
             // answer for yet, the loading panel is what belongs on screen, and answering from there
             // sent a relation change in the middle of a transfer and dropped them out of it.
-            if (GameState.inst == null || !GameState.inst.IsPlayMode())
+            if (GameState.inst == null || !Main.InPlayMode())
             {
                 Close();
                 return;

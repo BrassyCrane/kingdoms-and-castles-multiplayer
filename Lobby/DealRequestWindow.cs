@@ -45,7 +45,7 @@ namespace KaCMultiplayer.Lobby
             // Never during a join. The same rule the alliance popup needed: a player still
             // receiving the world has no kingdom to answer for, the loading panel is what belongs
             // on screen, and answering from there sent a deal in the middle of a transfer.
-            if (GameState.inst == null || !GameState.inst.IsPlayMode())
+            if (GameState.inst == null || !Main.InPlayMode())
             {
                 Close();
                 return;

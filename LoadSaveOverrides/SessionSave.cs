@@ -84,7 +84,10 @@ namespace KaCMultiplayer.LoadSaveOverrides
             // VR was the one section the old hand-written unpack forgot, so multiplayer silently
             // never restored it. It is carried across now for the same reason every other section
             // is: base.Unpack reads it, and anything base.Unpack reads has to be here.
-            ss.VRSaveData = c.VRSaveData;
+            // Copied by name, because the macOS build of the game is an older one with no VR
+            // section at all, and naming the field directly stops the whole mod compiling there.
+            FieldInfo vr = typeof(LoadSaveContainer).GetField("VRSaveData");
+            if (vr != null) vr.SetValue(ss, vr.GetValue(c));
             ss.WorldSaveData = c.WorldSaveData;
             ss.FishSystemSaveData = c.FishSystemSaveData;
             ss.TownNameSaveData = c.TownNameSaveData;

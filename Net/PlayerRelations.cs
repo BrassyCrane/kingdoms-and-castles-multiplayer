@@ -140,7 +140,7 @@ namespace KaCMultiplayer.Net
         public static void Tick()
         {
             if (revealsAfterLoad <= 0 || Time.unscaledTime < revealAfterLoadAt) return;
-            if (GameState.inst == null || !GameState.inst.IsPlayMode()) return;
+            if (GameState.inst == null || !Main.InPlayMode()) return;
 
             revealsAfterLoad--;
             revealAfterLoadAt = Time.unscaledTime + 5f;
@@ -502,7 +502,7 @@ namespace KaCMultiplayer.Net
                 // begun, the lobby chat list before it. A diplomacy change that nobody sees is
                 // worse than no diplomacy, so this deliberately reuses the path already proven
                 // to put text where a player is looking.
-                if (GameState.inst != null && GameState.inst.IsPlayMode())
+                if (GameState.inst != null && Main.InPlayMode())
                     KingdomLog.TryLog("mpDiplo" + (noticeSeq++), line, KingdomLog.LogStatus.Important, 0f);
                 else
                     KaCMultiplayer.Lobby.LobbyView.AddChatNotice(line);
@@ -1306,7 +1306,7 @@ namespace KaCMultiplayer.Net
             NetLog.Info("diplo: " + line);
             try
             {
-                if (GameState.inst != null && GameState.inst.IsPlayMode())
+                if (GameState.inst != null && Main.InPlayMode())
                     KingdomLog.TryLog("mpDiplo" + (noticeSeq++), line, KingdomLog.LogStatus.Neutral, 0f);
                 else
                     KaCMultiplayer.Lobby.LobbyView.AddChatNotice(line);

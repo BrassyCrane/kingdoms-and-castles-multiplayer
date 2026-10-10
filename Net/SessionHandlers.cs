@@ -231,7 +231,7 @@ namespace KaCMultiplayer.Net
                         + (inProgress ? "game in progress, sending the running world"
                            : SteamLobby.loadingSave ? "lobby with a save, sending the save"
                            : "fresh lobby, sending the map seed")
-                        + " (play mode " + (GameState.inst != null && GameState.inst.IsPlayMode())
+                        + " (play mode " + (GameState.inst != null && Main.InPlayMode())
                         + ", menu " + Main.menuState + ")");
 
             if (inProgress)

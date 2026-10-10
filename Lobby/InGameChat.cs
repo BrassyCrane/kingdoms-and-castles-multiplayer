@@ -127,7 +127,7 @@ namespace KaCMultiplayer
             try
             {
                 if (!NetClient.client.IsConnected) return false;
-                return GameState.inst != null && GameState.inst.IsPlayMode();
+                return GameState.inst != null && Main.InPlayMode();
             }
             catch { return false; }
         }
