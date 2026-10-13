@@ -1,6 +1,6 @@
 # Known issues
 
-Problems we know about in the current version, **0.16.5**. If you run into one of these, a report is
+Problems we know about in the current version, **0.16.6**. If you run into one of these, a report is
 still useful, especially with your output.txt attached (see the [README](README.md#reporting-a-bug)
 for where to find it). Anything not on this list, please report.
 
@@ -14,6 +14,12 @@ Each entry says what you see, and what to do about it if there is a workaround.
 
 ## Loading a saved game
 
+- **A multiplayer save does not open from the main menu's Load list.** Open **Multiplayer** from the
+  main menu, press **Load** and pick it there. You can start it alone if nobody else is joining.
+- **Two copies of the mod installed together stop saves loading.** This happens when you are
+  subscribed to a second Workshop item that contains the mod: an old or duplicate upload, or an
+  add-on that ships its own copy. The mod says so at the main menu. Unsubscribe from the other
+  item and restart the game.
 - **A big save takes about a minute to send** to each player joining it. The loading bar is slow,
   not stuck.
 
