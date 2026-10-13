@@ -1725,6 +1725,10 @@ namespace KaCMultiplayer.Dev
                   && Player.inst.PlayerLandmassOwner.teamId >= PlayerRelations.MpTeamBase);
 
             Check("the local player was given a keep", Player.inst != null && Player.inst.keep != null);
+
+            // Exactly one, not "at most one": zero would mean the count has stopped finding our
+            // own hook, and then it could never notice a second copy either.
+            Check("exactly one copy of the mod has hooked the save loader", Main.CountModCopies() == 1);
         }
 
         private static void CheckFakePeer()

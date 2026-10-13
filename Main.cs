@@ -1004,6 +1004,16 @@ namespace KaCMultiplayer
 
             helper.Log($"local Steam persona: {SteamFriends.GetPersonaName()}");
 
+            // Every mod has finished its Preload by now, so a second copy has already patched.
+            int copies = CountModCopies();
+            DuplicateCopyLoaded = copies > 1;
+            helper.Log($"[COPIES] {copies} copy/copies of the multiplayer mod hooked the save loader");
+            if (DuplicateCopyLoaded)
+            {
+                helper.Log("[COPIES] WARN another subscribed mod contains its own copy of this mod. " +
+                           "Everything is patched twice and saves will not load until it is unsubscribed.");
+                KaCMultiplayer.Lobby.ModalDialog.ShowWhenVisible(DuplicateCopyTitle, DuplicateCopyBody);
+            }
 
             SteamBootstrap = new GameObject("SteamBootstrap").AddComponent<SteamBootstrap>();
             DontDestroyOnLoad(SteamBootstrap);
@@ -1372,9 +1382,62 @@ namespace KaCMultiplayer
         /// Path.Combine and even File.ReadAllBytes were all refused as "illegal namespace reference
         /// to System.IO"), and one refusal fails the whole mod at launch.
         /// </summary>
-        public const string BuildVersion = "0.16.0";
+        public const string BuildVersion = "0.16.6";
 
         public static string ModVersion { get { return BuildVersion; } }
+
+        /// <summary>
+        /// True when a second copy of this mod is loaded beside this one. Set once, in SceneLoaded,
+        /// from <see cref="CountModCopies"/>.
+        /// </summary>
+        public static bool DuplicateCopyLoaded;
+
+        public const string DuplicateCopyTitle = "Two copies of the multiplayer mod";
+
+        public const string DuplicateCopyBody =
+            "Another mod you are subscribed to contains its own copy of the multiplayer mod, so " +
+            "everything runs twice and saved games will not load.\n\nThis is usually an old or " +
+            "duplicate upload of the mod, or an add-on that ships a copy of it. Unsubscribe from " +
+            "it in the Steam Workshop, restart the game, and ask the people you play with to do " +
+            "the same.";
+
+        /// <summary>
+        /// How many copies of this mod have hooked the game's save loader: 1 is normal.
+        ///
+        /// Two copies loaded together (the same code under two Workshop items) each patch every
+        /// method, so every action is sent and applied twice, and a load never finishes: each
+        /// copy's <see cref="LoadSaveContainerUnpackHook"/> sees the other copy's SessionSave as a
+        /// stock container to convert, and they hand the save back and forth until the game dies.
+        /// A player sees that as "my game crashes when I load our save", with nothing in the log
+        /// but the same four load lines repeating.
+        ///
+        /// Counted from Harmony's own record of who patched the loader, matched by type name
+        /// because the other copy's hook is a different type with the same name. Needs no file or
+        /// assembly access, which the Workshop scanner refuses. Returns 1 when it cannot tell, so a
+        /// failed count never blocks a load.
+        /// </summary>
+        public static int CountModCopies()
+        {
+            try
+            {
+                string ours = typeof(LoadSaveContainerUnpackHook).FullName;
+                Patches info = HarmonyInstance.Create("harmony").GetPatchInfo(
+                    AccessTools.Method(typeof(LoadSaveContainer), "Unpack"));
+                if (info == null) return 1;
+
+                int copies = 0;
+                foreach (Patch prefix in info.Prefixes)
+                    if (prefix.patch != null && prefix.patch.DeclaringType != null
+                        && prefix.patch.DeclaringType.FullName == ours)
+                        copies++;
+                return copies;
+            }
+            catch (Exception e)
+            {
+                LogEx("counting the loaded copies of the mod", e);
+                return 1;
+            }
+        }
 
         /// <summary>
         /// For companion mods: sends <paramref name="payload"/> on <paramref name="channel"/> to
@@ -9907,17 +9970,40 @@ namespace KaCMultiplayer
                     return true;   // vanilla or single-player save, loaded normally: let the game handle it
                 }
 
+                // Two copies of the mod each run this prefix, and each takes the other's SessionSave
+                // for a stock container, so the load bounces between them for ever (see
+                // Main.CountModCopies). Stop on the first pass. Thrown rather than returned, here
+                // and below: the game's LoadAtPath, and ours, catch a throw from Unpack, go to the
+                // load-error screen and leave the world alone, where a false return hands them a
+                // null world and lets them carry on as though it had loaded.
+                if (Main.DuplicateCopyLoaded)
+                {
+                    Main.helper.Log("[LOAD] REFUSED, two copies of the multiplayer mod are loaded");
+                    KaCMultiplayer.Lobby.ModalDialog.ShowWhenVisible(
+                        Main.DuplicateCopyTitle, Main.DuplicateCopyBody);
+                    throw new InvalidOperationException("two copies of the multiplayer mod are loaded");
+                }
+
                 // Only rebuild the multiplayer session when one is actually active. A block-carrying
-                // save opened OUTSIDE a session (an MP save copied into the single-player folder and
-                // loaded from the SP menu, say) has no roster, no client id and no server, and
-                // SessionSave.Unpack keys every player on those, so it would collapse both kingdoms
-                // onto client id 0 or throw. Fall through to the game's own Unpack, which restores the
-                // base (saver's) kingdom as a normal single-player load, exactly what the unmodded
-                // game does with the same file.
+                // save opened OUTSIDE a session (picked in the main menu's own Load list, which is
+                // where a player naturally looks for it) has no roster, no client id and no server,
+                // and SessionSave.Unpack keys every player on those.
+                //
+                // This used to fall through to the game's own Unpack, on the theory that it would
+                // restore the saver's kingdom as a normal single-player world. It does not: the
+                // kingdoms in a multiplayer save sit on teams 5 and up, single player has no room
+                // for those, and a real save threw in every fishing hut and barracks, ended on the
+                // load-error screen and left thousands of errors running behind it (reported
+                // 2026-10-13). Refuse before anything is touched and say where the save does open.
                 if (!(NetClient.client.IsConnected || NetHost.IsRunning))
                 {
-                    Main.helper.Log("[LOAD] save has a mod session block but no session is active; loading it as a plain single-player save (base kingdom only)");
-                    return true;
+                    Main.helper.Log("[LOAD] REFUSED, a multiplayer save was opened from the single-player load list");
+                    KaCMultiplayer.Lobby.ModalDialog.ShowWhenVisible(
+                        "That's a multiplayer save",
+                        "This save is from a multiplayer game, so it cannot be opened from here.\n\n"
+                        + "To carry on with it, open Multiplayer from the main menu, press Load and "
+                        + "pick it there. Your friends can then join you, or you can start it alone.");
+                    throw new InvalidOperationException("a multiplayer save was opened outside a multiplayer session");
                 }
 
                 Main.helper.Log($"[LOAD] mod session block found ({mod.players.Count} kingdom(s)); rebuilding through SessionSave");

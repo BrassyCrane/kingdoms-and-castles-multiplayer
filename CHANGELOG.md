@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.16.6
+
+- The mod now warns you at the main menu when a second copy of it is installed: an old or
+  duplicate upload, or an add-on that ships its own copy. With two copies everything ran twice, and
+  loading a saved game froze or crashed the game. That load is now stopped with a message instead.
+- Picking a multiplayer save in the main menu's own Load list tells you where to open it (Multiplayer,
+  then Load), instead of ending on a load error with the game running broken behind it.
+- Players on different versions of the mod are told so when they join each other again. The check
+  had compared every version since 0.16.0 as equal.
+
 ## 0.16.5
 
 - Fixed an error that stopped the mod loading on the Mac version of the game.

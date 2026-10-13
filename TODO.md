@@ -12,6 +12,10 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
   and open the Workshop page for anything they are missing. Worth checking first whether the game's
   mod loader can enable a mod without a restart; if it cannot, the fix button has to apply the
   change and restart the game.
+- **Make a multiplayer save open in single player.** Its kingdoms sit on teams the single-player
+  game has no room for, so the game's own Load list cannot open one; the mod now refuses it there
+  and points to the multiplayer Load button. Find out what a game without the mod does with the
+  same file, then move the saver's kingdom onto the single-player team on the way in.
 - **Rebuilding the lobby map throws once when the host opens a lobby** ("regenerating the lobby
   world (size changed)", a NullReferenceException that is caught). Nobody has joined yet at that
   point, but whatever the method does after the throw is skipped.
