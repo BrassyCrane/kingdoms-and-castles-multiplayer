@@ -262,6 +262,7 @@ namespace KaCMultiplayer.Dev
             CheckSaveRoundTrip();
             CheckSaveLoadsBack();
             Invariants.BuildingJobsAreRegistered("after the save loads back");
+            Invariants.VillagerMeshSlotsAreValid("after the save loads back");
             CheckMaterialsAreComplete();
             CheckIdsSurvivedTheLoad();
             PrepareHostBuildFixture();

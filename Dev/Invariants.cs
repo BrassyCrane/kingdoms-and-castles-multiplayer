@@ -89,6 +89,7 @@ namespace KaCMultiplayer.Dev
             EvictionsGoToTheHouseOwner();
             AbandonedPathsAreClosed();
             BuildingJobsAreRegistered("in the running session");
+            VillagerMeshSlotsAreValid("in the running session");
             RecycledPendingMessagesDropTheirOldEvents();
             AJammedLinkCanDrain();
 
@@ -1320,6 +1321,49 @@ namespace KaCMultiplayer.Dev
             }
         }
 
+
+        // ---- VILLAGER MESHES ------------------------------------------------------------
+
+        /// <summary>
+        /// Every live villager holds exactly one drawn mesh slot, in the mesh system of its own
+        /// type, and that slot exists.
+        ///
+        /// A villager writes its position into its slot every time it moves, from inside the
+        /// game's per-villager and per-job loops. A slot that points past its system's silos
+        /// throws there every frame, which stops the rest of that loop: the "most of the kingdom
+        /// is frozen" report after a save loaded, caused by a post-load repair that added every
+        /// villager a second time to the default mesh. A duplicate slot is also a frozen copy
+        /// drawn on screen. Called twice, while the session runs and again after the save loads.
+        /// </summary>
+        internal static void VillagerMeshSlotsAreValid(string when)
+        {
+            try
+            {
+                FieldInfo countField = Harmony.AccessTools.Field(typeof(InstanceSystem), "count");
+                int slots = 0;
+                for (int t = 0; t < (int)VillagerSystem.MeshType.NumType; t++)
+                    slots += (int)countField.GetValue(VillagerSystem.inst.instances.data[t]);
+
+                int bad = 0;
+                var all = Villager.villagers;
+                for (int i = 0; i < all.Count; i++)
+                {
+                    Villager v = all.data[i];
+                    if (v != null && v.s >= VillagerSystem.inst.instances.data[(int)v.MeshType].silos.Count) bad++;
+                }
+
+                if (slots != all.Count || bad > 0)
+                    log("villager mesh slots " + when + ": " + slots + " slot(s) for " + all.Count
+                        + " villager(s), " + bad + " pointing at a missing silo");
+
+                check("every villager has one valid mesh slot " + when, slots == all.Count && bad == 0);
+            }
+            catch (Exception ex)
+            {
+                check("the villager mesh slot check finished without throwing", false);
+                Main.LogEx("[SELFTEST] villager mesh slots", ex);
+            }
+        }
 
         // ---- JOBS -----------------------------------------------------------------------
 

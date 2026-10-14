@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.7
+
+- Fixed most of the villagers in a kingdom standing frozen after a multiplayer save was loaded,
+  with frozen copies of them left standing on the map. This affected every loaded game since
+  0.16.0.
+
 ## 0.16.6
 
 - The mod now warns you at the main menu when a second copy of it is installed: an old or
