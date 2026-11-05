@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.9
+
+- The new Extra Large map size can be picked in the multiplayer lobby.
+- Fixed Random in the lobby's map size list making an Extra Large map since the November 2026 game
+  update.
+
 ## 0.16.8
 
 - Fixed the mod failing to load after the November 2026 game update ("Compilation failed").

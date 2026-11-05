@@ -163,6 +163,25 @@ namespace KaCMultiplayer
             return c;
         }
 
+        /// <summary>
+        /// Fills the map size menu from the game's own World.MapSize list, one entry per value
+        /// in order, so menu position N is always map size N.
+        ///
+        /// The menu's entries used to come fixed from the lobby prefab (Small, Medium, Large,
+        /// Random). The November 2026 game update put ExtraLarge in before Random, so the fixed
+        /// "Random" entry silently made an Extra Large map. Reading the list keeps every build
+        /// right: the new one gets Extra Large, an older one (the Mac build) keeps four entries.
+        /// </summary>
+        private static void FillSizePicker(TMP_Dropdown picker)
+        {
+            List<string> labels = new List<string>();
+            // By name, not World.MapSize.ExtraLarge: older builds have no such value.
+            foreach (World.MapSize size in Enum.GetValues(typeof(World.MapSize)))
+                labels.Add(size.ToString() == "ExtraLarge" ? "Extra Large" : size.ToString());
+            picker.ClearOptions();
+            picker.AddOptions(labels);
+        }
+
         private T BindInChildren<T>(string path) where T : Component
         {
             T c = Node(path).GetComponentInChildren<T>();
@@ -233,6 +252,7 @@ namespace KaCMultiplayer
                 RerollButton = Bind<Button>(world + "NewMap");
 
                 SizePicker = BindInChildren<TMP_Dropdown>(world + "WorldSize");
+                FillSizePicker(SizePicker);
 
                 RiversPicker = BindInChildren<TMP_Dropdown>(world + "WorldRivers");
                 RiversPicker.value = 1;
