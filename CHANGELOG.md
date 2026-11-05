@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.10
+
+- Fixed a multiplayer game started since the November 2026 game update where only one player
+  could place their castle, the other saw their kingdom's stats as all zeroes and could not build.
+
 ## 0.16.9
 
 - The new Extra Large map size can be picked in the multiplayer lobby.

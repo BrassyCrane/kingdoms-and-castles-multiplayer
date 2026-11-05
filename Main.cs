@@ -1382,7 +1382,7 @@ namespace KaCMultiplayer
         /// Path.Combine and even File.ReadAllBytes were all refused as "illegal namespace reference
         /// to System.IO"), and one refusal fails the whole mod at launch.
         /// </summary>
-        public const string BuildVersion = "0.16.9";
+        public const string BuildVersion = "0.16.10";
 
         public static string ModVersion { get { return BuildVersion; } }
 
@@ -6595,7 +6595,13 @@ namespace KaCMultiplayer
             }
         }
 
-        [HarmonyPatch(typeof(TreeSystem), "GrowTree")]
+        /// <summary>
+        /// Host tells the others a tree grew, so trees match on every machine.
+        /// The argument type is named because the November 2026 game update added a second
+        /// GrowTree(Cell, Vector3); without it Harmony throws "Ambiguous match" and stops every
+        /// later patch applying (no castle, no stats, no building for guests).
+        /// </summary>
+        [HarmonyPatch(typeof(TreeSystem), "GrowTree", new Type[] { typeof(Cell) })]
         public class TreeSystemGrowTreeHook
         {
             public static void Postfix(Cell cell)
