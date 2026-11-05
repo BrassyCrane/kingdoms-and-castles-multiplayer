@@ -744,7 +744,7 @@ namespace KaCMultiplayer.LoadSaveOverrides
 
                     if (pl == Player.inst)
                     {
-                        try { pl.RefreshVisibility(true); }
+                        try { Main.RefreshVisibility(pl); }
                         catch (Exception ex) { Main.helper.Log("[LOAD] local visibility refresh failed: " + ex.Message); }
                     }
                 }

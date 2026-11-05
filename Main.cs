@@ -1382,7 +1382,7 @@ namespace KaCMultiplayer
         /// Path.Combine and even File.ReadAllBytes were all refused as "illegal namespace reference
         /// to System.IO"), and one refusal fails the whole mod at launch.
         /// </summary>
-        public const string BuildVersion = "0.16.7";
+        public const string BuildVersion = "0.16.8";
 
         public static string ModVersion { get { return BuildVersion; } }
 
@@ -1867,7 +1867,7 @@ namespace KaCMultiplayer
 
                 if (changed)
                 {
-                    try { if (Player.inst != null) Player.inst.RefreshVisibility(true); }
+                    try { Main.RefreshVisibility(Player.inst); }
                     catch (Exception re) { Main.helper.Log("RevealAll: RefreshVisibility error: " + re.Message); }
 
                     try { fow.UpdateShaders(); }
@@ -2051,6 +2051,44 @@ namespace KaCMultiplayer
         {
             GameState gs = GameState.inst;
             return gs != null && gs.CurrMode == gs.playingMode;
+        }
+
+        private static MethodInfo refreshVisibility;
+
+        /// <summary>
+        /// Recomputes a player's fog of war, the game's Player.RefreshVisibility.
+        ///
+        /// Called by name because its signature differs between game builds: the November 2026
+        /// update dropped its bool argument, while older builds (the Mac one among them) still take
+        /// it. The game compiles the mod on each machine, so naming either form directly breaks
+        /// the other. Whichever exists is called, with true for the old argument as before.
+        /// </summary>
+        public static void RefreshVisibility(Player p)
+        {
+            if (p == null) return;
+            if (refreshVisibility == null)
+                refreshVisibility = typeof(Player).GetMethod("RefreshVisibility", Type.EmptyTypes)
+                    ?? typeof(Player).GetMethod("RefreshVisibility", new[] { typeof(bool) });
+            ParameterInfo[] ps = refreshVisibility.GetParameters();
+            refreshVisibility.Invoke(p, ps.Length == 0 ? null : new object[] { true });
+        }
+
+        private static MethodInfo shakeItem;
+        private static bool shakeItemLooked;
+
+        /// <summary>
+        /// The game's TreeSystem.ShakeItem(cell, idx), or null on a game build without it.
+        /// Older builds had ShakeTree(int) with a different index instead, so tree shakes are
+        /// only synced between players on the current build. They are cosmetic.
+        /// </summary>
+        public static MethodInfo ShakeItemMethod()
+        {
+            if (!shakeItemLooked)
+            {
+                shakeItem = typeof(TreeSystem).GetMethod("ShakeItem", new[] { typeof(Cell), typeof(int) });
+                shakeItemLooked = true;
+            }
+            return shakeItem;
         }
 
         /// <summary>
@@ -2367,6 +2405,23 @@ namespace KaCMultiplayer
             catch (Exception e)
             {
                 Main.helper.Log("Player building close guard failed (an AI could close a player's building): " + e.Message);
+            }
+
+            // Tree shakes, manual because ShakeItem is missing on older game builds. See
+            // TreeSystemShakeTreeHook.
+            try
+            {
+                MethodInfo shake = ShakeItemMethod();
+                if (shake != null)
+                    harmony.Patch(shake, null,
+                        new HarmonyMethod(typeof(TreeSystemShakeTreeHook).GetMethod("Postfix", BindingFlags.Public | BindingFlags.Static)),
+                        null);
+
+                Main.helper.Log($"Tree shake sync patched ({shake != null})");
+            }
+            catch (Exception e)
+            {
+                Main.helper.Log("Tree shake sync patch failed (trees will not wobble for other players): " + e.Message);
             }
 
             PatchGhostKingdomFreeze(harmony);
@@ -6524,14 +6579,19 @@ namespace KaCMultiplayer
             }
         }
 
-        [HarmonyPatch(typeof(TreeSystem), "ShakeTree")]
+        /// <summary>
+        /// Tells the others a tree was shaken (the wobble while a woodcutter chops it).
+        /// Patched by hand, not by attribute, because TreeSystem.ShakeItem only exists on the
+        /// current game build: an attribute pointing at a missing method would stop every other
+        /// patch applying. See the tree shake block in the manual patch list.
+        /// </summary>
         public class TreeSystemShakeTreeHook
         {
-            public static void Postfix(int idx)
+            public static void Postfix(Cell cell, int idx)
             {
-                if (!NetClient.client.IsConnected || NetApply.InProgress) return;
+                if (!NetClient.client.IsConnected || NetApply.InProgress || cell == null) return;
 
-                NetRouter.Send(new KaCMultiplayer.Net.Messages.TreeShakeMessage { Index = idx });
+                NetRouter.Send(new KaCMultiplayer.Net.Messages.TreeShakeMessage { Index = idx, X = cell.x, Z = cell.z });
             }
         }
 

@@ -1,6 +1,6 @@
 # Known issues
 
-Problems we know about in the current version, **0.16.7**. If you run into one of these, a report is
+Problems we know about in the current version, **0.16.8**. If you run into one of these, a report is
 still useful, especially with your output.txt attached (see the [README](README.md#reporting-a-bug)
 for where to find it). Anything not on this list, please report.
 
@@ -11,6 +11,8 @@ Each entry says what you see, and what to do about it if there is a workaround.
 - **The Mac version of the game is an older build than the Windows one.** The error that stopped
   the mod loading there is fixed in 0.16.5, but a Mac player in a game with Windows players has not
   been tried yet. If it goes wrong for you, please send your output.txt.
+- **Players on an older game build** (including the Mac build, if it has not had the November 2026
+  update) do not see each other's trees wobble while being chopped. It is cosmetic.
 
 ## Loading a saved game
 

@@ -85,7 +85,7 @@ namespace KaCMultiplayer.LoadSaveOverrides
                     BuildMenuMaterials.Refresh(pass == 1 || remaining == 0);
                 }
 
-                try { local.RefreshVisibility(true); } catch { }
+                try { Main.RefreshVisibility(local); } catch { }
 
                 Main.MarkBannersDirty();
                 Main.helper.Log("[LOADVIS] pass " + pass + ": team=" + owner.teamId

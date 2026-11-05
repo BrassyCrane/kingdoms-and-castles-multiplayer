@@ -857,7 +857,7 @@ namespace KaCMultiplayer.Net
 
                 Player.inst.PlayerLandmassOwner.TakeOwnership(keep.LandMass());
                 Player.inst.keep = keep.GetComponent<Keep>();
-                Player.inst.RefreshVisibility(true);
+                Main.RefreshVisibility(Player.inst);
 
                 // Broadcast this one. We are inside a handler, so sends are normally
                 // suppressed, but the keep is a new building every other machine needs.
@@ -1834,10 +1834,19 @@ namespace KaCMultiplayer.Net
             }
         }
 
+        /// <summary>
+        /// Plays another player's tree shake here. Through reflection because ShakeItem only
+        /// exists on the current game build (see Main.ShakeItemMethod); on older builds it is
+        /// skipped, it is cosmetic.
+        /// </summary>
         private static void ApplyTreeShake(TreeShakeMessage m)
         {
+            MethodInfo shake = Main.ShakeItemMethod();
+            if (shake == null) return;
+            Cell cell = World.inst.GetCellData(m.X, m.Z);
+            if (cell == null) return;
             using (NetApply.Scope())
-                TreeSystem.inst.ShakeTree(m.Index);
+                shake.Invoke(TreeSystem.inst, new object[] { cell, m.Index });
         }
 
         private static void ApplyTreeGrow(TreeGrowMessage m)

@@ -3,8 +3,8 @@ using Riptide;
 namespace KaCMultiplayer.Net.Messages
 {
     /// <summary>
-    /// A tree was shaken, the cosmetic wobble when something brushes past it. Identified
-    /// by global tree index rather than cell, which is what TreeSystem.ShakeTree takes.
+    /// A tree was shaken, the cosmetic wobble while a woodcutter chops it. Carries the cell and
+    /// the tree's index within it, which is what TreeSystem.ShakeItem takes.
     /// </summary>
     public class TreeShakeMessage : IOriginated
     {
@@ -12,19 +12,26 @@ namespace KaCMultiplayer.Net.Messages
 
         public ushort Origin { get; set; }
 
-        /// <summary>Global tree index.</summary>
+        /// <summary>Index of the tree within the cell.</summary>
         public int Index;
+
+        public int X;
+        public int Z;
 
         public void Serialize(Message m)
         {
             m.AddUShort(Origin);
             m.AddInt(Index);
+            m.AddInt(X);
+            m.AddInt(Z);
         }
 
         public void Deserialize(Message m)
         {
             Origin = m.GetUShort();
             Index = m.GetInt();
+            X = m.GetInt();
+            Z = m.GetInt();
         }
     }
 }

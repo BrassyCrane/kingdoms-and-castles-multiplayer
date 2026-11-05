@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.8
+
+- Fixed the mod failing to load after the November 2026 game update ("Compilation failed").
+
 ## 0.16.7
 
 - Fixed most of the villagers in a kingdom standing frozen after a multiplayer save was loaded,
