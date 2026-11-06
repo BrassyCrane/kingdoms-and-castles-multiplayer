@@ -210,7 +210,8 @@ namespace KaCMultiplayer
         /// HandleConnectionApproval can turn away a wrong password or a different mod version
         /// before the player gets anywhere: two versions read each other's messages differently.
         /// Then this machine's Workshop mod list (ModList.Mine, "?" when it could not be read), so
-        /// the host can turn away a guest whose mods differ. A host before 0.16.14 never reads it.
+        /// the host can turn away a guest whose mods differ, and the mod scripts (ModList.Scripts),
+        /// which also catch local-folder mods. A host before 0.16.14 never reads either.
         /// </summary>
         public static void Connect(string ip, string password = null)
         {
@@ -221,6 +222,7 @@ namespace KaCMultiplayer
             connectMsg.AddString(password ?? "");
             connectMsg.AddString(Main.ModVersion);
             connectMsg.AddString(ModList.Mine() ?? "?");
+            connectMsg.AddString(ModList.Scripts() ?? "?");
             client.Connect(ip, message: connectMsg, useMessageHandlers: false);
         }
 

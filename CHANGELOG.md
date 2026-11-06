@@ -11,6 +11,9 @@
   mods are missing or extra, and one button subscribes and unsubscribes on Steam and closes the
   game, ready to restart and rejoin. Different mods made the game drift apart in ways that looked
   like multiplayer bugs.
+- Mods copied into the game's local mods folder are compared too. A player whose local mods
+  differ from the host's is told which ones, by the name of their code, and cannot join until
+  they match.
 
 ## 0.16.13
 

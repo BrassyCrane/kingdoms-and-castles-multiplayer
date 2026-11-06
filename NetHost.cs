@@ -257,6 +257,19 @@ namespace KaCMultiplayer
                     }
                 }
 
+                // Then the guest's mod scripts. Same Workshop mods but different scripts means the
+                // local mods folders differ; Steam cannot fix that, so a plain refusal naming them.
+                string guestScripts = "?";
+                try { if (connectMessage != null && connectMessage.UnreadBits > 0) guestScripts = connectMessage.GetString(); } catch { guestScripts = "?"; }
+                string hostScripts = ModList.Scripts();
+                if (guestScripts != "?" && hostScripts != null && guestScripts != hostScripts)
+                {
+                    Main.helper.Log("[MODS] Rejected a connection: different local mods. Host [" + hostScripts
+                                    + "], guest [" + guestScripts + "]");
+                    server.Reject(pending, Message.Create().AddString(ModList.DescribeScripts(hostScripts, guestScripts)));
+                    return;
+                }
+
                 var settings = LobbySettings.Current;
                 if (settings == null || !settings.Locked)
                 {

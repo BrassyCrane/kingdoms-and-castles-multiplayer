@@ -19,8 +19,9 @@ namespace KaCMultiplayer.Net
     /// nothing reloads until a restart. So the fix is subscribing to what is missing, unsubscribing
     /// from what is extra, and restarting.
     ///
-    /// Only Workshop mods are compared. Mods dropped into the local mods folder are listed by the
-    /// game's ModLoader, which the game's code-security scan forbids mods to touch.
+    /// Workshop mods are compared by id. Mods dropped into the local mods folder are listed only by
+    /// the game's ModLoader, which the game's code-security scan forbids mods to touch, so they are
+    /// compared by their code instead (<see cref="Scripts"/>).
     /// </summary>
     public static class ModList
     {
@@ -50,6 +51,54 @@ namespace KaCMultiplayer.Net
                 Main.helper.Log("[MODS] could not read the loaded mod list: " + e.Message);
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Every loaded mod's entry scripts, Workshop and local alike: the full class names, sorted,
+        /// separated by '|', repeats kept. The game's loader makes each mod's entry class a
+        /// component of its own object, the same one this mod's Main sits on, so reading that
+        /// object's components finds local mods without touching the forbidden loader. Game and
+        /// Unity classes are left out, and so is this mod. A mod whose entry class is not a
+        /// MonoBehaviour is not seen. Null when it could not be read.
+        /// </summary>
+        public static string Scripts()
+        {
+            try
+            {
+                Main main = UnityEngine.Object.FindObjectOfType<Main>();
+                if (main == null) return null;
+                var ours = typeof(Main).Assembly;
+                var game = typeof(GameState).Assembly;
+                return string.Join("|", main.GetComponents<UnityEngine.MonoBehaviour>()
+                    .Where(c => c != null)
+                    .Select(c => c.GetType())
+                    .Where(t => t.Assembly != ours && t.Assembly != game && !(t.Namespace ?? "").StartsWith("UnityEngine"))
+                    .Select(t => t.FullName)
+                    .OrderBy(n => n, StringComparer.Ordinal).ToArray());
+            }
+            catch (Exception e)
+            {
+                Main.helper.Log("[MODS] could not read the loaded mod scripts: " + e.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// The refusal text when the Workshop mods match but the mod scripts do not, which means
+        /// the local mods folders differ. Steam cannot fix that, so it only names the scripts.
+        /// </summary>
+        public static string DescribeScripts(string host, string guest)
+        {
+            List<string> h = (host ?? "").Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+            List<string> g = (guest ?? "").Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+            List<string> missing = new List<string>(h), extra = new List<string>(g);
+            foreach (string n in g) missing.Remove(n);
+            foreach (string n in h) extra.Remove(n);
+            string text = "The host is running different mods from its local mods folder (KingdomsAndCastles_Data\\mods), and everyone in a game needs the same ones.";
+            if (missing.Count > 0) text += "\n\nMissing (the host has them): " + string.Join(", ", missing.ToArray());
+            if (extra.Count > 0) text += "\n\nExtra (the host does not have them): " + string.Join(", ", extra.ToArray());
+            text += "\n\nCopy the same mod folders as the host, or remove yours, then restart the game and rejoin.";
+            return text;
         }
 
         /// <summary>Parses a list written by <see cref="Mine"/>. Null or "" is an empty list.</summary>
