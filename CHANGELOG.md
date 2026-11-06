@@ -1,5 +1,13 @@
 # Changelog
 
+## Next version (not released yet)
+
+- Fixed chopping a tree sometimes removing a different tree, or two trees, on the other players'
+  screens.
+- Fixed a merchant ship sometimes not appearing for a guest when it was sailing to another
+  player's dock.
+- Fixed an error when the host opens a lobby.
+
 ## 0.16.13
 
 - Players on a different version of the mod can no longer join a game. They are told which

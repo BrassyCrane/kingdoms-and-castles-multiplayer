@@ -5,14 +5,11 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
 
 ## Next
 
-- **Soldiers' villagers may load twice from a save (reported again 2026-11-05).** Unclickable
-  copies, homeless count climbing with free beds. Check how UnitSystem packs and unpacks the villagers
-  in a unit next to the kingdom's own villager list.
-- **A felled tree is sometimes not found on the other machines** ("ERROR handling TreeFell",
-  IndexOutOfRange in TreeSystem.Chunk.RemoveItem, 71 times in one host log, 2026-11-06). The tree
-  index inside a cell differs between machines, likely since the November update's tree data rewrite.
-- **A merchant ship sometimes fails to appear for a guest** ("ERROR merchant spawn", NRE in
-  MerchantShip.SetFromShipData from MerchantSync.Apply).
+- **Soldiers' villagers may load twice from a save (reported 2026-11-05).** Unclickable copies,
+  homeless count climbing with free beds. Training and disbanding are synced correctly; the reports
+  came from saves made before 0.16.11, when the host saved its own stale copy of each guest's
+  kingdom. If it recurs with a save made on 0.16.13 or later, compare
+  the villager count each machine logs before the save and after the load.
 - **Check everyone is running the same mods when a game is created or joined.** Different mod lists
   between host and guest desync the session in ways that look like our own bugs. Send the enabled
   mod list (Workshop id and version) with the join handshake, compare it, and if it differs show the
@@ -24,9 +21,6 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
   game has no room for, so the game's own Load list cannot open one; the mod now refuses it there
   and points to the multiplayer Load button. Find out what a game without the mod does with the
   same file, then move the saver's kingdom onto the single-player team on the way in.
-- **Rebuilding the lobby map throws once when the host opens a lobby** ("regenerating the lobby
-  world (size changed)", a NullReferenceException that is caught). Nobody has joined yet at that
-  point, but whatever the method does after the throw is skipped.
 
 ## Base game systems switched off or broken in multiplayer
 

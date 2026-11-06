@@ -6,9 +6,10 @@ namespace KaCMultiplayer.Net.Messages
     /// A tree was felled. Carries the cell so the receiver can resolve its own Cell
     /// instance, cell objects are per-machine, only coordinates travel.
     ///
-    /// Relayed to everyone including the sender. The feller has already felled it locally, so
-    /// its own echo re-applies to an already-felled tree, TreeSystem tolerates that, and the
-    /// blind relay is cheaper than tracking who to skip.
+    /// Also carries the tree's position, because the index is a slot in the game's per-chunk
+    /// tree array that gets reshuffled on every removal, so the same tree has a different
+    /// index on each machine. The receiver fells the tree in that cell nearest this position.
+    /// The feller ignores its own echo, it already felled the tree.
     /// </summary>
     public class TreeFellMessage : IOriginated
     {
@@ -22,12 +23,18 @@ namespace KaCMultiplayer.Net.Messages
         public int X;
         public int Z;
 
+        /// <summary>World position of the felled tree, to find the same tree on each machine.</summary>
+        public float PosX;
+        public float PosZ;
+
         public void Serialize(Message m)
         {
             m.AddUShort(Origin);
             m.AddInt(Index);
             m.AddInt(X);
             m.AddInt(Z);
+            m.AddFloat(PosX);
+            m.AddFloat(PosZ);
         }
 
         public void Deserialize(Message m)
@@ -36,6 +43,8 @@ namespace KaCMultiplayer.Net.Messages
             Index = m.GetInt();
             X = m.GetInt();
             Z = m.GetInt();
+            PosX = m.GetFloat();
+            PosZ = m.GetFloat();
         }
     }
 }

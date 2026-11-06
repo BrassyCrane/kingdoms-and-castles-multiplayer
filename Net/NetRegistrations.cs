@@ -96,14 +96,13 @@ namespace KaCMultiplayer.Net
             NetRegistry.OnClient<TimeScaleMessage>(NetMessageId.TimeScale,
                 (m, ctx) => ApplyTimeScale(m.Speed, m.Origin));
 
-            // Trees. Relayed including the sender: the sender re-applies to a tree it has
-            // already felled, which TreeSystem tolerates, and a blind relay is cheaper than
-            // tracking who to skip.
+            // Trees. Relayed including the sender, which skips its own echo: it already felled
+            // the tree, and felling again would take a second tree from that cell.
             NetRegistry.Register<TreeFellMessage>(NetMessageId.TreeFell);
             NetRegistry.OnServer<TreeFellMessage>(NetMessageId.TreeFell,
                 (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) ApplyTreeFell(m); });
             NetRegistry.OnClient<TreeFellMessage>(NetMessageId.TreeFell,
-                (m, ctx) => ApplyTreeFell(m));
+                (m, ctx) => { if (!IsOwnEcho(m.Origin)) ApplyTreeFell(m); });
 
             // UNRELIABLE: a tree wobbling as a woodcutter hits it, nothing more. It is sent from
             // BaseCutterJob.UpdateWithEmployee, so every woodcutter in the kingdom produces a
@@ -1820,17 +1819,36 @@ namespace KaCMultiplayer.Net
         // So each apply must happen inside NetApply.Scope(), or the patch treats it as a
         // fresh local action and sends it straight back out.
 
+        /// <summary>
+        /// Fells another player's tree here. The sent index is only meaningful on the sender's
+        /// machine (the game's tree slots reshuffle on every removal), so this fells the tree in
+        /// the same cell nearest the sent position instead. A cell with no trees left means it is
+        /// already gone here, nothing to do. Using the raw index threw IndexOutOfRange or felled
+        /// the wrong tree.
+        /// </summary>
         private static void ApplyTreeFell(TreeFellMessage m)
         {
             using (NetApply.Scope())
             {
                 Cell cell = World.inst.GetCellData(m.X, m.Z);
-                if (cell == null)
+                TreeSystem.TreeCellData trees = TreeSystem.inst.GetTreeCellDataAt(m.X, m.Z);
+                if (cell == null || trees == null)
                 {
                     NetLog.Warn("tree fell: no cell at " + m.X + "," + m.Z);
                     return;
                 }
-                TreeSystem.inst.FellTree(cell, m.Index);
+                if (trees.TreeAmount <= 0) return;
+
+                int best = -1;
+                float bestDist = float.MaxValue;
+                foreach (int id in trees.TreeIds)
+                {
+                    if (id == -1) continue;
+                    UnityEngine.Vector3 p = TreeSystem.inst.GetItem(cell, id).pos;
+                    float d = (p.x - m.PosX) * (p.x - m.PosX) + (p.z - m.PosZ) * (p.z - m.PosZ);
+                    if (d < bestDist) { bestDist = d; best = id; }
+                }
+                if (best != -1) TreeSystem.inst.FellTree(cell, best);
             }
         }
 

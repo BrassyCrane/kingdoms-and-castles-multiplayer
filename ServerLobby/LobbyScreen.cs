@@ -779,7 +779,10 @@ namespace KaCMultiplayer
                     }
                 }
 
-                NetRouter.Broadcast(WorldSeedMessage.ForCurrentWorld(), NetClient.client.Id);
+                // The host's own client is not connected yet when the lobby first opens (Id reads
+                // a null connection and threw). Nobody has joined then, so there is no one to tell.
+                if (NetClient.client.IsConnected)
+                    NetRouter.Broadcast(WorldSeedMessage.ForCurrentWorld(), NetClient.client.Id);
             }
             catch (Exception ex)
             {

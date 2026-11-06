@@ -6566,15 +6566,29 @@ namespace KaCMultiplayer
         [HarmonyPatch(typeof(TreeSystem), "FellTree")]
         public class TreeSystemFellTreeHook
         {
-            public static void Postfix(Cell cell, int idx)
+            /// <summary>
+            /// Remembers where the tree stands before the game removes it, because the other
+            /// machines find the same tree by position, its index differs on each of them.
+            /// </summary>
+            public static void Prefix(TreeSystem __instance, Cell cell, int idx, ref Vector3 __state)
             {
-                if (!NetClient.client.IsConnected || NetApply.InProgress) return;
+                __state = Vector3.zero;
+                if (cell == null || idx < 0) return;
+                try { __state = __instance.GetItem(cell, idx).pos; } catch { }
+            }
+
+            /// <summary>Tells the others which tree this machine felled.</summary>
+            public static void Postfix(Cell cell, int idx, Vector3 __state)
+            {
+                if (!NetClient.client.IsConnected || NetApply.InProgress || cell == null) return;
 
                 NetRouter.Send(new KaCMultiplayer.Net.Messages.TreeFellMessage
                 {
                     Index = idx,
                     X = cell.x,
-                    Z = cell.z
+                    Z = cell.z,
+                    PosX = __state.x,
+                    PosZ = __state.z
                 });
             }
         }
@@ -7540,6 +7554,24 @@ namespace KaCMultiplayer
         // Now: the host alone creates foreign merchants, for every dock in the world, and tells
         // every guest (MerchantSync), so every machine sees the same ship, cargo and destination.
         // A guest's own random merchant is removed before it sails. Single player is untouched.
+        /// <summary>
+        /// Finds a foreign merchant's dock when it belongs to another player. Vanilla looks only in
+        /// the local player's own building list, so on a guest a host-made merchant bound for the
+        /// host's (or a third player's) dock got no dock: SetFromShipData threw ("ERROR merchant
+        /// spawn") and Tick sent the ship away. Single player never misses, so this never runs there.
+        /// </summary>
+        [HarmonyPatch(typeof(MerchantShip), "GetCurrentDock")]
+        public class MerchantShipGetCurrentDockHook
+        {
+            public static void Postfix(Guid ___dockID, ref Dock __result)
+            {
+                if (__result != null || ___dockID == Guid.Empty) return;
+                if (!(NetClient.client.IsConnected || NetHost.IsRunning)) return;
+                Building b = Main.FindBuildingByGuidAnyPlayer(___dockID);
+                if (b != null) __result = b.GetComponent<Dock>();
+            }
+        }
+
         [HarmonyPatch(typeof(MerchantShip), "StartSailing")]
         public class MerchantShipStartSailingHook
         {

@@ -32,8 +32,9 @@ Each entry says what you see, and what to do about it if there is a workaround.
   add-on that ships its own copy. The mod says so at the main menu. Unsubscribe from the other
   item and restart the game.
 - **After loading a save with armies, the homeless count may keep climbing** with free beds: the
-  soldiers' villagers seem to load twice, as copies you cannot click. Being looked into; please
-  send both players' output.txt from a session where it happened.
+  soldiers' villagers seem to load twice, as copies you cannot click. Saves made on 0.16.13 or later
+  should no longer do this. If it still happens with a new save, please send both players'
+  output.txt from that session.
 - **A big save takes about a minute to send** to each player joining it. The loading bar is slow,
   not stuck.
 
