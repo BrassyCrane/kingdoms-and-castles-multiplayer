@@ -1,4 +1,7 @@
-﻿using KaCMultiplayer.Lobby;
+﻿// Kingdoms and Castles Multiplayer. Copyright (c) BrassyCrane and contributors.
+// All rights reserved, not open source: see LICENSE.md for what you may do with this code.
+
+using KaCMultiplayer.Lobby;
 using System;
 using System.Collections.Generic;
 using System.Linq;
