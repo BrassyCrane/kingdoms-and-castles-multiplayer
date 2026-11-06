@@ -1382,7 +1382,7 @@ namespace KaCMultiplayer
         /// Path.Combine and even File.ReadAllBytes were all refused as "illegal namespace reference
         /// to System.IO"), and one refusal fails the whole mod at launch.
         /// </summary>
-        public const string BuildVersion = "0.16.10";
+        public const string BuildVersion = "0.16.11";
 
         public static string ModVersion { get { return BuildVersion; } }
 
@@ -9925,7 +9925,9 @@ namespace KaCMultiplayer
                     // simulation. Losing one kingdom from a save is recoverable; a hung session is not.
                     try
                     {
-                        data.players.Add(player.steamId, new Player.PlayerSaveData().Pack(player.inst));
+                        // The owner's own copy, not this machine's parallel simulation of their
+                        // kingdom (which has no real resources and a growing homeless list).
+                        data.players.Add(player.steamId, LoadSaveOverrides.SessionSave.PackKingdom(player));
                     }
                     catch (Exception e)
                     {

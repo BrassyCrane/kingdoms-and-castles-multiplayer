@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.11
+
+- Fixed a guest's kingdom coming back from a multiplayer save with its resources gone or below
+  zero and its villagers homeless. Saves now keep each player's kingdom as that player had it.
+
 ## 0.16.10
 
 - Fixed a multiplayer game started since the November 2026 game update where only one player

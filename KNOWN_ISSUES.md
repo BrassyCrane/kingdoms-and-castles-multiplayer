@@ -1,6 +1,6 @@
 # Known issues
 
-Problems we know about in the current version, **0.16.10**. If you run into one of these, a report is
+Problems we know about in the current version, **0.16.11**. If you run into one of these, a report is
 still useful, especially with your output.txt attached (see the [README](README.md#reporting-a-bug)
 for where to find it). Anything not on this list, please report.
 
@@ -31,10 +31,9 @@ Each entry says what you see, and what to do about it if there is a workaround.
   subscribed to a second Workshop item that contains the mod: an old or duplicate upload, or an
   add-on that ships its own copy. The mod says so at the main menu. Unsubscribe from the other
   item and restart the game.
-- **After loading a save, a kingdom's resources can come back at zero or below**, and the homeless
-  count can keep climbing with plenty of free beds. Players with armies see it most: the soldiers'
-  villagers seem to load twice, as copies you cannot click. Being looked into; please send both
-  players' output.txt from a session where it happened.
+- **After loading a save with armies, the homeless count may keep climbing** with free beds: the
+  soldiers' villagers seem to load twice, as copies you cannot click. Being looked into; please
+  send both players' output.txt from a session where it happened.
 - **A big save takes about a minute to send** to each player joining it. The loading bar is slow,
   not stuck.
 

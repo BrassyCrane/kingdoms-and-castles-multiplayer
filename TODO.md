@@ -5,11 +5,9 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
 
 ## Next
 
-- **Resources wiped and homelessness climbing after a save loads (reported again 2026-11-05).**
-  Stone and wood went negative, everything but charcoal emptied, homeless count keeps rising with
-  free beds. One player ties it to armies: each loaded unit seems to bring a duplicate set of its
-  villagers that cannot be clicked. Check how units and their villagers are packed and unpacked,
-  and whether storage contents survive the load.
+- **Soldiers' villagers may load twice from a save (reported again 2026-11-05).** Unclickable
+  copies, homeless count climbing with free beds. Check how UnitSystem packs and unpacks the villagers
+  in a unit next to the kingdom's own villager list.
 - **Check everyone is running the same mods when a game is created or joined.** Different mod lists
   between host and guest desync the session in ways that look like our own bugs. Send the enabled
   mod list (Workshop id and version) with the join handshake, compare it, and if it differs show the

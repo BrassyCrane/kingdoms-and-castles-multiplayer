@@ -136,7 +136,7 @@ namespace KaCMultiplayer.LoadSaveOverrides
         /// Falls back rather than failing: a player who has just joined has not sent one yet, and
         /// a stale or missing copy still has to produce a save.
         /// </summary>
-        private Player.PlayerSaveData PackKingdom(SessionPlayer player)
+        internal static Player.PlayerSaveData PackKingdom(SessionPlayer player)
         {
             if (player.steamId != Main.PlayerSteamID)
             {
