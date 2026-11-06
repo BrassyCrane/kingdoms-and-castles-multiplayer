@@ -214,15 +214,30 @@ namespace KaCMultiplayer
         {
             try
             {
-                var settings = LobbySettings.Current;
-                if (settings == null || !settings.Locked)
+                // Connect message: password ("" if none), then the guest's mod version. A build
+                // before 0.16.13 sends no version (and no message at all when the game is not
+                // locked), so a missing one reads as "" and is refused like any other mismatch.
+                string provided = "", version = "";
+                try { if (connectMessage != null) provided = connectMessage.GetString(); } catch { provided = ""; }
+                try { if (connectMessage != null) version = connectMessage.GetString(); } catch { version = ""; }
+
+                if (version != Main.ModVersion)
                 {
-                    server.Accept(pending); // not password-protected, behave exactly as before
+                    Main.helper.Log("Rejected a connection: mod version " + (version == "" ? "older than 0.16.13" : version)
+                                    + ", this host on " + Main.ModVersion);
+                    server.Reject(pending, Message.Create().AddString(
+                        "The host is running Kingdoms and Castles Multiplayer " + Main.ModVersion
+                        + (version == "" ? " and you have an older version." : " and you are running " + version + ".")
+                        + " Everyone needs the same version: restart Steam so the Workshop updates the mod, then restart the game."));
                     return;
                 }
 
-                string provided = "";
-                try { provided = connectMessage.GetString(); } catch { provided = ""; }
+                var settings = LobbySettings.Current;
+                if (settings == null || !settings.Locked)
+                {
+                    server.Accept(pending); // not password-protected
+                    return;
+                }
 
                 string expected = settings.Password ?? "";
                 if ((provided ?? "").Trim() == expected.Trim())

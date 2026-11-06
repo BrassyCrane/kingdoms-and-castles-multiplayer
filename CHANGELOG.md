@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.13
+
+- Players on a different version of the mod can no longer join a game. They are told which
+  version the host is running and how to update. Different versions read each other's messages
+  differently, which caused errors that did not look like a version problem.
+
 ## 0.16.12
 
 - Joining a game whose host had already left froze for a moment and dropped you at the main

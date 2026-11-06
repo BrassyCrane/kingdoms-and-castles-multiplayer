@@ -167,21 +167,20 @@ namespace KaCMultiplayer
             Name = name;
         }
 
-        // Connect to a host. If a password is supplied (joining a locked server, or the host connecting
-        // to its own locked server) it's sent as the Riptide connect-message payload, which the server's
-        // HandleConnectionApproval validates. Null/empty password = no payload = unchanged behaviour for
-        // unlocked servers.
+        /// <summary>
+        /// Connects to a host. The connect message always carries the password ("" when the game
+        /// is not locked) followed by this build's mod version, so the host's
+        /// HandleConnectionApproval can turn away a wrong password or a different mod version
+        /// before the player gets anywhere: two versions read each other's messages differently.
+        /// </summary>
         public static void Connect(string ip, string password = null)
         {
             bool locked = !string.IsNullOrEmpty(password);
             Main.helper.Log("connecting to " + ip + (locked ? " (password supplied)" : ""));
 
-            Message connectMsg = null;
-            if (locked)
-            {
-                connectMsg = Message.Create();
-                connectMsg.AddString(password);
-            }
+            Message connectMsg = Message.Create();
+            connectMsg.AddString(password ?? "");
+            connectMsg.AddString(Main.ModVersion);
             client.Connect(ip, message: connectMsg, useMessageHandlers: false);
         }
 
