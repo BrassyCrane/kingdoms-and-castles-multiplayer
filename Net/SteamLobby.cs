@@ -370,6 +370,11 @@ namespace KaCMultiplayer.Net
             SteamMatchmaking.JoinLobby(request.m_steamIDLobby);
         }
 
+        /// <summary>
+        /// Steam put us in a lobby (browser join or invite): connect to its host, asking for the
+        /// password first if the lobby is locked. In multiplayer the lobby owner IS the game server,
+        /// so a lobby with no real host left is turned away here with a message.
+        /// </summary>
         private void HandleLobbyEntered(LobbyEnter_t entered)
         {
             // The host enters its own lobby too, and has already started everything.
@@ -377,6 +382,19 @@ namespace KaCMultiplayer.Net
 
             lobby = new CSteamID(entered.m_ulSteamIDLobby);
             CSteamID host = SteamMatchmaking.GetLobbyOwner(lobby);
+
+            // A lobby whose host has gone: Steam hands ownership to whoever is left, which can be
+            // us (an outdated server list row, or a lobby we were still in). Connecting to
+            // ourselves fails after a short freeze and drops us at the menu with no reason given.
+            if (host.ToString() == Main.PlayerSteamID)
+            {
+                Main.helper.Log("lobby " + lobby + " has no host any more (we are its owner); leaving it");
+                try { ModalDialog.Hide(); } catch { }
+                SteamLobby.ResetNetworkState();
+                ModalDialog.Show("Game ended", "The host of that game has left. Refresh the list and pick another game.",
+                    "Okay", true, () => { Main.TransitionTo(MenuState.BrowserScreen); });
+                return;
+            }
 
             // Ask before connecting when the host published the lobby as locked. The password
             // itself is never published, only the fact that there is one, and the host

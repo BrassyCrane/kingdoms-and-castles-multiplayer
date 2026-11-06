@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.16.12
+
+- Joining a game whose host had already left froze for a moment and dropped you at the main
+  menu with no reason. It now says the game has ended.
+- Fixed the mod failing to read a building's construction progress since the November 2026 game
+  update (only affected a log line).
+
 ## 0.16.11
 
 - Fixed a guest's kingdom coming back from a multiplayer save with its resources gone or below

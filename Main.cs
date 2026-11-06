@@ -1382,7 +1382,7 @@ namespace KaCMultiplayer
         /// Path.Combine and even File.ReadAllBytes were all refused as "illegal namespace reference
         /// to System.IO"), and one refusal fails the whole mod at launch.
         /// </summary>
-        public const string BuildVersion = "0.16.11";
+        public const string BuildVersion = "0.16.12";
 
         public static string ModVersion { get { return BuildVersion; } }
 
