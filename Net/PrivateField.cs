@@ -13,7 +13,7 @@ namespace KaCMultiplayer.Net
     /// </summary>
     public static class PrivateField
     {
-        private const BindingFlags Instance = BindingFlags.NonPublic | BindingFlags.Instance;
+        private const BindingFlags Instance = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance;  // Public too: game updates sometimes make a field public (constructionProgress, Nov 2026)
 
         // Keyed by type and name. A miss is cached as null too, so a field that a game update
         // has renamed doesn't cost a failed reflection lookup every tick forever.
