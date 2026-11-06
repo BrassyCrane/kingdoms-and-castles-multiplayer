@@ -10,13 +10,8 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
   came from saves made before 0.16.11, when the host saved its own stale copy of each guest's
   kingdom. If it recurs with a save made on 0.16.13 or later, compare
   the villager count each machine logs before the save and after the load.
-- **Check everyone is running the same mods when a game is created or joined.** Different mod lists
-  between host and guest desync the session in ways that look like our own bugs. Send the enabled
-  mod list (Workshop id and version) with the join handshake, compare it, and if it differs show the
-  player exactly what is wrong with a one click fix: switch on or off the mods they already have,
-  and open the Workshop page for anything they are missing. Worth checking first whether the game's
-  mod loader can enable a mod without a restart; if it cannot, the fix button has to apply the
-  change and restart the game.
+- **Compare mods put in the local mods folder too.** Only Workshop mods are compared when a
+  player joins: the game forbids mods to read its list of local ones. Find another way to see them.
 - **Make a multiplayer save open in single player.** Its kingdoms sit on teams the single-player
   game has no room for, so the game's own Load list cannot open one; the mod now refuses it there
   and points to the multiplayer Load button. Find out what a game without the mod does with the

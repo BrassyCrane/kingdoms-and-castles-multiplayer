@@ -232,6 +232,28 @@ namespace KaCMultiplayer
                     return;
                 }
 
+                // Then the guest's Workshop mod list. Same version means the guest sent one; "?"
+                // (either side could not read its list) skips the check rather than refuse
+                // everyone. The refusal carries the host's list after the text, so the guest can
+                // offer to fix its own mods (NetClient.Client_ConnectionFailed).
+                string guestMods = "?";
+                try { if (connectMessage != null) guestMods = connectMessage.GetString(); } catch { guestMods = "?"; }
+                string hostMods = ModList.Mine();
+                if (guestMods != "?" && hostMods != null)
+                {
+                    List<ulong> missing, extra;
+                    ModList.Compare(hostMods, guestMods, out missing, out extra);
+                    if (missing.Count > 0 || extra.Count > 0)
+                    {
+                        Main.helper.Log("[MODS] Rejected a connection: different mods. Host [" + hostMods
+                                        + "], guest [" + guestMods + "]");
+                        server.Reject(pending, Message.Create()
+                            .AddString(ModList.Describe(missing, extra))
+                            .AddString(hostMods));
+                        return;
+                    }
+                }
+
                 var settings = LobbySettings.Current;
                 if (settings == null || !settings.Locked)
                 {

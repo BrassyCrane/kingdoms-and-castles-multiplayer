@@ -28,6 +28,7 @@ namespace KaCMultiplayer.Lobby
         private static TextMeshProUGUI title;
         private static TextMeshProUGUI body;
         private static Button button;
+        private static Button secondButton; // a clone of button, shown only when asked for
 
         // A message raised while the dialog cannot actually be seen, held until it can.
         private static string queuedTitle;
@@ -113,6 +114,22 @@ namespace KaCMultiplayer.Lobby
                     return false;
                 }
 
+                // The prefab has one button. The second is a copy beside it; if the container does
+                // not lay its children out, move the copy right by a button's width so the two
+                // do not sit on top of each other.
+                secondButton = UnityEngine.Object.Instantiate(button.gameObject, button.transform.parent).GetComponent<Button>();
+                if (button.transform.parent.GetComponent<LayoutGroup>() == null)
+                {
+                    RectTransform a = (RectTransform)button.transform, b = (RectTransform)secondButton.transform;
+                    float w = a.rect.width * 0.55f;
+                    b.anchoredPosition = a.anchoredPosition + new Vector2(w, 0f);
+                    a.anchoredPosition -= new Vector2(w, 0f);
+                    firstButtonHome = a.anchoredPosition + new Vector2(w, 0f);
+                    firstButtonPaired = a.anchoredPosition;
+                    movesButtons = true;
+                }
+                secondButton.gameObject.SetActive(false);
+
                 root = instance;
                 return true;
             }
@@ -134,15 +151,23 @@ namespace KaCMultiplayer.Lobby
             return node.GetComponent<TextMeshProUGUI>();
         }
 
+        // Where the first button sits alone and beside the second, when the container has no
+        // layout of its own and the copy had to be placed by hand.
+        private static bool movesButtons;
+        private static Vector2 firstButtonHome, firstButtonPaired;
+
         /// <summary>
         /// Shows a message. <paramref name="onDismiss"/> runs after the dialog closes.
+        /// <paramref name="secondText"/> adds a second button (a Cancel beside a choice) that
+        /// closes the dialog and runs <paramref name="onSecond"/> instead.
         ///
         /// Suppressed silently, bar a log line, if the dialog can't be built. A caller
         /// reporting a connection failure should not itself fail.
         /// </summary>
         public static void Show(string titleText, string bodyText,
                                 string buttonText = "Okay", bool withButton = true,
-                                Action onDismiss = null)
+                                Action onDismiss = null,
+                                string secondText = null, Action onSecond = null)
         {
             if (!EnsureBuilt())
             {
@@ -168,6 +193,22 @@ namespace KaCMultiplayer.Lobby
                     root.SetActive(false);
                     if (onDismiss != null) onDismiss();
                 });
+
+                bool two = withButton && secondText != null;
+                secondButton.gameObject.SetActive(two);
+                if (movesButtons)
+                    ((RectTransform)button.transform).anchoredPosition = two ? firstButtonPaired : firstButtonHome;
+                if (two)
+                {
+                    TextMeshProUGUI label2 = secondButton.GetComponentInChildren<TextMeshProUGUI>();
+                    if (label2 != null) label2.text = secondText;
+                    secondButton.onClick.RemoveAllListeners();
+                    secondButton.onClick.AddListener(() =>
+                    {
+                        root.SetActive(false);
+                        if (onSecond != null) onSecond();
+                    });
+                }
 
                 root.SetActive(true);
             }

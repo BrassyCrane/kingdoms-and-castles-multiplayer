@@ -144,9 +144,12 @@ namespace KaCMultiplayer
             // A custom rejection (e.g. wrong password) carries a human-readable reason in e.Message,
             // surface that instead of the generic code so the player knows what to fix.
             string reason = DisconnectMessages.For(e.Reason);
+            string hostMods = null;
             if (e.Reason == RejectReason.Custom && e.Message != null)
             {
                 try { reason = e.Message.GetString(); } catch { }
+                // A refusal for different mods carries the host's mod list after the text.
+                try { if (e.Message.UnreadBits > 0) hostMods = e.Message.GetString(); } catch { hostMods = null; }
             }
 
             // A rejected or failed connection raises this event rather than Disconnected, so
@@ -158,8 +161,39 @@ namespace KaCMultiplayer
             try { SteamLobby.ResetNetworkState(); }
             catch (Exception rex) { Main.helper.Log("Reset on connection-fail failed: " + rex.Message); }
 
+            if (hostMods != null)
+            {
+                ShowModMismatch(hostMods);
+                return;
+            }
+
             ModalDialog.Show("Failed to connect", reason, "Okay", true,
                 () => { Main.TransitionTo(MenuState.BrowserScreen); });
+        }
+
+        /// <summary>
+        /// The host refused us for running different Workshop mods. Works out the difference on
+        /// this side (our own list is the one that has to change) and offers the one-click fix:
+        /// subscribe and unsubscribe on Steam, then close the game, because mods only load at
+        /// startup. Cancel goes back to the browser with nothing changed.
+        /// </summary>
+        private static void ShowModMismatch(string hostMods)
+        {
+            List<ulong> missing, extra;
+            ModList.Compare(hostMods, ModList.Mine(), out missing, out extra);
+            Main.helper.Log("[MODS] host refused us for different mods: missing [" + string.Join(",", missing.Select(id => id.ToString()).ToArray())
+                            + "], extra [" + string.Join(",", extra.Select(id => id.ToString()).ToArray()) + "]");
+
+            ModalDialog.Show("Different mods", ModList.Describe(missing, extra), "Fix my mods", true,
+                () =>
+                {
+                    ModList.Fix(missing, extra);
+                    ModalDialog.Show("Mods changed",
+                        "Steam is updating your mods. The game will now close: start it again and rejoin.",
+                        "Close game", true,
+                        () => GameState.inst.mainMenuMode.Quit());
+                },
+                "Cancel", () => Main.TransitionTo(MenuState.BrowserScreen));
         }
 
         public NetClient(string name)
@@ -172,6 +206,8 @@ namespace KaCMultiplayer
         /// is not locked) followed by this build's mod version, so the host's
         /// HandleConnectionApproval can turn away a wrong password or a different mod version
         /// before the player gets anywhere: two versions read each other's messages differently.
+        /// Then this machine's Workshop mod list (ModList.Mine, "?" when it could not be read), so
+        /// the host can turn away a guest whose mods differ. A host before 0.16.14 never reads it.
         /// </summary>
         public static void Connect(string ip, string password = null)
         {
@@ -181,6 +217,7 @@ namespace KaCMultiplayer
             Message connectMsg = Message.Create();
             connectMsg.AddString(password ?? "");
             connectMsg.AddString(Main.ModVersion);
+            connectMsg.AddString(ModList.Mine() ?? "?");
             client.Connect(ip, message: connectMsg, useMessageHandlers: false);
         }
 

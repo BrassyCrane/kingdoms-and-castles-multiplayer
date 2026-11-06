@@ -7,6 +7,10 @@
 - Fixed a merchant ship sometimes not appearing for a guest when it was sailing to another
   player's dock.
 - Fixed an error when the host opens a lobby.
+- Players whose Workshop mods differ from the host's can no longer join. They are told which
+  mods are missing or extra, and one button subscribes and unsubscribes on Steam and closes the
+  game, ready to restart and rejoin. Different mods made the game drift apart in ways that looked
+  like multiplayer bugs.
 
 ## 0.16.13
 
