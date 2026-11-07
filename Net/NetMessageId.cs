@@ -82,6 +82,8 @@ namespace KaCMultiplayer.Net
         VillagerHome = 1095,
         /// <summary>Who works in which job. See Net/JobSync.cs.</summary>
         JobAssign = 1096,
+        /// <summary>Villagers' hunger, health and sickness. See Net/VitalsSync.cs.</summary>
+        VillagerVitals = 1097,
         ArmySpawn = 1100,
         ArmyDespawn = 1101,
         ArmyHealth = 1102,

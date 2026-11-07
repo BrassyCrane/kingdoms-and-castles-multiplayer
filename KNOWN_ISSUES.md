@@ -51,12 +51,6 @@ Each entry says what you see, and what to do about it if there is a workaround.
 - **The Hall of Diplomacy is not set up for multiplayer.** Use **Ctrl + Shift + D** instead, which
   covers both players and AI kingdoms.
 
-## What other players see of your kingdom
-
-These are not synced yet, so the other machines hold their own guess until something corrects it:
-
-- **How hungry or healthy your villagers are.**
-
 ## Lobby
 
 - **The server browser does not list games.** Join through a Steam invite instead.

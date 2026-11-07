@@ -1251,6 +1251,7 @@ namespace KaCMultiplayer
             if (NetClient.client.IsConnected && FixedUpdateInterval % 50 == 0)
                 BroadcastOwnResources();
             KaCMultiplayer.Net.StorageSync.Tick();
+            KaCMultiplayer.Net.VitalsSync.Tick(FixedUpdateInterval);
             KaCMultiplayer.LoadSaveOverrides.PostLoadVisualRepair.Tick();
 
             // AI buildings are mirrored from the host, but exploration is local to each guest.

@@ -225,6 +225,13 @@ namespace KaCMultiplayer.Net
             NetRegistry.OnClient<JobAssignMessage>(NetMessageId.JobAssign,
                 (m, ctx) => JobSync.Apply(m));
 
+            // Villagers' hunger, health and sickness, from each kingdom's own machine.
+            NetRegistry.Register<VillagerVitalsMessage>(NetMessageId.VillagerVitals);
+            NetRegistry.OnServer<VillagerVitalsMessage>(NetMessageId.VillagerVitals,
+                (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) VitalsSync.Apply(m); });
+            NetRegistry.OnClient<VillagerVitalsMessage>(NetMessageId.VillagerVitals,
+                (m, ctx) => VitalsSync.Apply(m));
+
             NetRegistry.Register<VillagerDeathMessage>(NetMessageId.VillagerDeath);
             NetRegistry.OnServer<VillagerDeathMessage>(NetMessageId.VillagerDeath,
                 (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) ApplyVillagerDeath(m); });
