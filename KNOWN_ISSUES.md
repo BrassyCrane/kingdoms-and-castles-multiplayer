@@ -1,6 +1,6 @@
 # Known issues
 
-Problems we know about in the current version, **0.16.15**. If you run into one of these, a report is
+Problems we know about in the current version, **0.16.16**. If you run into one of these, a report is
 still useful, especially with your output.txt attached (see the [README](README.md#reporting-a-bug)
 for where to find it). Anything not on this list, please report.
 

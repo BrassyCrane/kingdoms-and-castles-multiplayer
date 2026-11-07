@@ -1,6 +1,6 @@
 # Changelog
 
-## Next version (not released yet)
+## 0.16.16
 
 - Custom banners now show on every player's screen, on flags, armies, ships and in the lobby,
   instead of only on your own. Other players used to see a built-in banner in its place.
