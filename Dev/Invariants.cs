@@ -95,6 +95,7 @@ namespace KaCMultiplayer.Dev
             VillagerMeshSlotsAreValid("in the running session");
             RecycledPendingMessagesDropTheirOldEvents();
             AJammedLinkCanDrain();
+            PackedSavesComeBackExact();
 
             // Last, deliberately: if the guard it checks is ever missing, the act of checking
             // rebuilds the world this suite is running in, and every check after it would fail for
@@ -1152,6 +1153,34 @@ namespace KaCMultiplayer.Dev
         /// precisely that an old event cannot tell it is old. If either the release or the reuse
         /// stops moving the token, this fails.
         /// </summary>
+        /// <summary>
+        /// The save codec gives back exactly what it was given: repetitive data, random data,
+        /// overlapping runs, and the tiny edge cases. A joiner loading a save that came back one
+        /// byte off would load a broken world, so this guards SaveCodec before any join uses it.
+        /// </summary>
+        private static void PackedSavesComeBackExact()
+        {
+            try
+            {
+                var rnd = new System.Random(7);
+                byte[] mixed = new byte[200000];
+                for (int i = 0; i < mixed.Length; i++)
+                    mixed[i] = (byte)(rnd.Next(4) == 0 ? rnd.Next(256) : i % 13);
+                byte[] noise = new byte[5000];
+                rnd.NextBytes(noise);
+
+                bool exact = true;
+                foreach (byte[] c in new[] { new byte[0], new byte[] { 9 }, new byte[70000], noise, mixed })
+                {
+                    byte[] back = KaCMultiplayer.Net.SaveCodec.Unpack(KaCMultiplayer.Net.SaveCodec.Pack(c));
+                    if (back.Length != c.Length) { exact = false; continue; }
+                    for (int i = 0; i < c.Length; i++) if (back[i] != c[i]) { exact = false; break; }
+                }
+                check("a packed save unpacks to exactly the bytes that were sent", exact);
+            }
+            catch (Exception ex) { check("a packed save unpacks to exactly the bytes that were sent: " + ex.Message, false); }
+        }
+
         private static void RecycledPendingMessagesDropTheirOldEvents()
         {
             try

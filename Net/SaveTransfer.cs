@@ -591,8 +591,8 @@ namespace KaCMultiplayer.Net
 
             try
             {
-                // The save arrives uncompressed; see SessionHandlers.SendSaveBytes for why.
-                Main.LoadSaveLoadHook.saveBytes = buffer;
+                // The save arrives packed; see SessionHandlers.SendSaveBytes and SaveCodec.
+                Main.LoadSaveLoadHook.saveBytes = SaveCodec.Unpack(buffer);
                 Main.LoadSaveLoadHook.fromNetwork = true;
 
                 SeedLiveryBeforeLoad();

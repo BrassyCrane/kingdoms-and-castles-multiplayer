@@ -5,11 +5,6 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
 
 ## Next
 
-- **Make a multiplayer save open in single player.** Its kingdoms sit on teams the single-player
-  game has no room for, so the game's own Load list cannot open one; the mod now refuses it there
-  and points to the multiplayer Load button. Find out what a game without the mod does with the
-  same file, then move the saver's kingdom onto the single-player team on the way in.
-
 ## Base game systems switched off or broken in multiplayer
 
 Everything the game has that a multiplayer session does not have yet. Each one should come back,
@@ -39,11 +34,16 @@ the kingdom log filter, the pink ships, and the host's lobby screen staying aliv
 
 ## Later
 
+- **Make a multiplayer save open in single player.** Its kingdoms sit on teams the single-player
+  game has no room for, so the game's own Load list cannot open one; the mod now refuses it there
+  and points to the multiplayer Load button. Find out what a game without the mod does with the
+  same file, then move the saver's kingdom onto the single-player team on the way in.
+
 - **The server browser lists nothing.** Joining works through Steam invites. Deferred on purpose.
   When it is picked up, check that the `SetLobbyData` publish and the `RequestLobbyList` filter
   really round trip, with logging on both ends.
-- **A big save takes about a minute to reach each joining player.** It is sent in 64 chunk windows;
-  make it quicker or make the wait clearer.
+- **A big save takes about half a minute to reach each joining player.** It is now packed to about
+  40% of its size before sending; a Huffman stage on top of the packing would roughly halve it again.
 - **State the game keeps once, that multiplayer needs per kingdom**: WorldMask, UnitSystem,
   SiegeCatapult, DragonSpawn. Each one is a place where two kingdoms share something they should
   not.
