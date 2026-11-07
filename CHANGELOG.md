@@ -1,6 +1,6 @@
 # Changelog
 
-## Next version (not released yet)
+## 0.16.17
 
 - Witch huts are back in multiplayer. Every player sees the same huts and has their own
   dealings with the witch, and the spell is paid from your own gold.
