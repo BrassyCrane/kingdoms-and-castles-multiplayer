@@ -55,8 +55,7 @@ the kingdom log filter, the pink ships, and the host's lobby screen staying aliv
 - **A big save takes about a minute to reach each joining player.** It is sent in 64 chunk windows;
   make it quicker or make the wait clearer.
 - **State the game keeps once, that multiplayer needs per kingdom**: WorldMask, UnitSystem,
-  SiegeCatapult, DragonSpawn, and the static `Home.BuildGatherTypeOrder` and
-  `HomeSaveData.UnloadVillager`. Each one is a place where two kingdoms share something they should
+  SiegeCatapult, DragonSpawn. Each one is a place where two kingdoms share something they should
   not.
 - **Look into whether a co-op mode is feasible**: two or more players running one shared kingdom
   instead of one kingdom each. Find out what the game ties to a single player (the local `Player`,

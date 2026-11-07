@@ -455,6 +455,51 @@ namespace KaCMultiplayer
         }
 
         /// <summary>
+        /// Whose resource totals Home.BuildGatherTypeOrder reads for a landmass: the kingdom that
+        /// owns it in multiplayer, Player.inst otherwise. Vanilla always reads Player.inst, so on
+        /// every machine but the owner's, another kingdom's homes, markets and bakers saw this
+        /// machine's (empty) totals for that island and decided there was nothing to collect.
+        /// </summary>
+        public static Player GatherResourcesOwner(int landMass)
+        {
+            if (!InMultiplayer) return Player.inst;
+            return PlayerOwningLandmass(landMass) ?? Player.inst;
+        }
+
+        /// <summary>
+        /// Swaps Home.BuildGatherTypeOrder's read of Player.inst for <see cref="GatherResourcesOwner"/>,
+        /// passing the landmass argument. Shared by Home, Market and Baker, so one patch covers all.
+        /// A transpiler rather than a Player.inst swap: Harmony 1.2 has no Finalizer, and a throw
+        /// between a swap and its restore would leave the wrong kingdom as the local player.
+        /// </summary>
+        [HarmonyPatch(typeof(Home), "BuildGatherTypeOrder")]
+        public class HomeGatherOrderOwnerHook
+        {
+            /// <summary>Reads rewritten. Harmony re-runs a transpiler when the method is patched again.</summary>
+            public static int Rewritten;
+
+            static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+            {
+                FieldInfo inst = AccessTools.Field(typeof(Player), "inst");
+                MethodInfo owner = typeof(Main).GetMethod("GatherResourcesOwner");
+                foreach (CodeInstruction c in instructions)
+                {
+                    if (c.opcode == OpCodes.Ldsfld && Equals(c.operand, inst))
+                    {
+                        // Labels stay on the original instruction, which becomes the landmass load.
+                        c.opcode = OpCodes.Ldarg_0;
+                        c.operand = null;
+                        yield return c;
+                        yield return new CodeInstruction(OpCodes.Call, owner);
+                        Rewritten++;
+                        continue;
+                    }
+                    yield return c;
+                }
+            }
+        }
+
+        /// <summary>
         /// Which kingdom's job settings govern a landmass, or null to let vanilla answer.
         ///
         /// Null for single player, for an unowned island, and for the receiver's own islands,
