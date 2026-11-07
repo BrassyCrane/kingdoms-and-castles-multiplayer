@@ -1,6 +1,6 @@
 # Changelog
 
-## Next version (not released yet)
+## 0.16.14
 
 - Fixed chopping a tree sometimes removing a different tree, or two trees, on the other players'
   screens.
