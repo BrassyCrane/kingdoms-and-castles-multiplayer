@@ -39,6 +39,8 @@ namespace KaCMultiplayer.Net
         ReadyState = 1023,
         BannerPick = 1024,
         KingdomLabel = 1025,
+        /// <summary>A piece of a custom banner picture. See Net/CustomBanners.cs.</summary>
+        CustomBanner = 1026,
 
         // 1040-1059  world and terrain
         TerrainPlace = 1040,

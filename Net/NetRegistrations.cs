@@ -78,6 +78,14 @@ namespace KaCMultiplayer.Net
             NetRegistry.OnClient<BannerPickMessage>(NetMessageId.BannerPick,
                 (m, ctx) => ApplyBanner(m));
 
+            // Custom banner pictures, in pieces. Relayed like the banner pick; the sender drops
+            // its own echo.
+            NetRegistry.Register<CustomBannerMessage>(NetMessageId.CustomBanner);
+            NetRegistry.OnServer<CustomBannerMessage>(NetMessageId.CustomBanner,
+                (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) CustomBanners.Receive(m); });
+            NetRegistry.OnClient<CustomBannerMessage>(NetMessageId.CustomBanner,
+                (m, ctx) => CustomBanners.Receive(m));
+
             // Kingdom name. Host records it too, so its own roster broadcasts carry it.
             NetRegistry.Register<KingdomLabelMessage>(NetMessageId.KingdomLabel);
             NetRegistry.OnServer<KingdomLabelMessage>(NetMessageId.KingdomLabel, RecordKingdomLabel);
@@ -2357,6 +2365,9 @@ namespace KaCMultiplayer.Net
             // player's behalf. Guarded because it is not critical to the banner showing.
             try { player.inst.SetIndexedBanner(m.Banner); }
             catch (Exception ex) { NetLog.Warn("SetIndexedBanner failed for client " + m.Origin + ": " + ex.Message); }
+
+            // SetIndexedBanner put the built-in picture back; a custom one goes on top again.
+            CustomBanners.Apply(player.inst.PlayerLandmassOwner);
 
             NetLog.Info("banner: client " + m.Origin + " -> " + m.Banner);
         }

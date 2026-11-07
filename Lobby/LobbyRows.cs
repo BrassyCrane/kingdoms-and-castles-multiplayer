@@ -31,6 +31,7 @@ namespace KaCMultiplayer.Lobby
         public static Texture BannerOf(SessionPlayer player)
         {
             if (player == null) return null;
+            if (player.customBanner != null) return player.customBanner;
 
             var sets = World.inst == null ? null : World.inst.liverySets;
             if (sets == null) return null;

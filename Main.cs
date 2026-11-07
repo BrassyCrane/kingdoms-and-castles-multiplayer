@@ -2034,6 +2034,7 @@ namespace KaCMultiplayer
                 {
                     Player.inst.SetIndexedBanner(localChosenBanner);
                     try { NetRouter.Send(new KaCMultiplayer.Net.Messages.BannerPickMessage { Banner = localChosenBanner }); } catch { }
+                    KaCMultiplayer.Net.CustomBanners.SendOurs();   // SetIndexedBanner dropped any custom one
                 }
                 if (!string.IsNullOrEmpty(localChosenKingdomName) && TownNameUI.inst != null)
                     TownNameUI.inst.SetTownNameQuiet(localChosenKingdomName); // TownNameHook re-broadcasts it
@@ -2943,6 +2944,7 @@ namespace KaCMultiplayer
                                 + "army/armies have no general component");
             }
 
+            KaCMultiplayer.Net.CustomBanners.Apply(owner);
             MarkBannersDirty();
         }
 
@@ -4537,6 +4539,25 @@ namespace KaCMultiplayer
                 {
                     Banner = Player.inst.PlayerLandmassOwner.bannerIdx
                 });
+
+                // The picture itself when a custom banner was chosen, "none" otherwise.
+                KaCMultiplayer.Net.CustomBanners.SendOurs();
+            }
+        }
+
+        /// <summary>
+        /// Puts a remote player's custom banner back after their livery is set. SetBannerIdx
+        /// overwrites BannerTexture with the built-in picture, and many paths call it (roster,
+        /// post-load repair, AI mirror). Skipped when SetBannerIdx throws partway; SetKingdomBanner
+        /// covers that case.
+        /// </summary>
+        [HarmonyPatch(typeof(LandmassOwner), "SetBannerIdx")]
+        public class LandmassOwnerSetBannerIdxCustomHook
+        {
+            public static void Postfix(LandmassOwner __instance)
+            {
+                if (!NetClient.client.IsConnected) return;
+                KaCMultiplayer.Net.CustomBanners.Apply(__instance);
             }
         }
 

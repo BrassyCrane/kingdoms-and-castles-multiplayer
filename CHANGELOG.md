@@ -1,5 +1,10 @@
 # Changelog
 
+## Next version (not released yet)
+
+- Custom banners now show on every player's screen, on flags, armies, ships and in the lobby,
+  instead of only on your own. Other players used to see a built-in banner in its place.
+
 ## 0.16.15
 
 - Fixed villagers appearing next to another player's barracks when it was knocked down or

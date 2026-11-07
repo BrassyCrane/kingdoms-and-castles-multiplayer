@@ -277,6 +277,9 @@ namespace KaCMultiplayer.Net
             // During a save load the lobby list is rebuilt from the save instead.
             if (!SaveTransfer.LoadingSave)
                 LobbyView.AddPlayer(m.Origin);
+
+            // A joiner has nobody's custom banner, and nobody has theirs, so everyone sends their own.
+            CustomBanners.SendOurs();
         }
 
         /// <summary>Sends the host's full view of the roster to every client but itself.</summary>

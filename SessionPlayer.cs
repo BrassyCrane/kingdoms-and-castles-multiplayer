@@ -32,6 +32,10 @@ namespace KaCMultiplayer
 
         public string kingdomName;
         public int banner = 0;
+
+        /// <summary>This player's custom banner picture as received from them, or null for a
+        /// built-in banner. Kept here so it survives the livery being reset. See CustomBanners.</summary>
+        public Texture2D customBanner;
         public bool ready = false;
 
         public Player inst;
