@@ -80,6 +80,8 @@ namespace KaCMultiplayer.Net
         WorkerSeed = 1093,
         VillagerDeath = 1094,
         VillagerHome = 1095,
+        /// <summary>Who works in which job. See Net/JobSync.cs.</summary>
+        JobAssign = 1096,
         ArmySpawn = 1100,
         ArmyDespawn = 1101,
         ArmyHealth = 1102,

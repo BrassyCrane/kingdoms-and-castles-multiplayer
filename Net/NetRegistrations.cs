@@ -218,6 +218,13 @@ namespace KaCMultiplayer.Net
             NetRegistry.OnClient<VillagerHomeMessage>(NetMessageId.VillagerHome,
                 (m, ctx) => ApplyVillagerHome(m));
 
+            // Job assignments, decided by each kingdom's own machine.
+            NetRegistry.Register<JobAssignMessage>(NetMessageId.JobAssign);
+            NetRegistry.OnServer<JobAssignMessage>(NetMessageId.JobAssign,
+                (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) JobSync.Apply(m); });
+            NetRegistry.OnClient<JobAssignMessage>(NetMessageId.JobAssign,
+                (m, ctx) => JobSync.Apply(m));
+
             NetRegistry.Register<VillagerDeathMessage>(NetMessageId.VillagerDeath);
             NetRegistry.OnServer<VillagerDeathMessage>(NetMessageId.VillagerDeath,
                 (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) ApplyVillagerDeath(m); });

@@ -56,8 +56,6 @@ Each entry says what you see, and what to do about it if there is a workaround.
 These are not synced yet, so the other machines hold their own guess until something corrects it:
 
 - **How hungry or healthy your villagers are.**
-- **Which job each of your villagers is doing.** Only your own game puts your villagers to work,
-  so on other players' screens your workplaces show no workers.
 
 ## Lobby
 

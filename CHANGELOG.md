@@ -4,6 +4,8 @@
 
 - Custom banners now show on every player's screen, on flags, armies, ships and in the lobby,
   instead of only on your own. Other players used to see a built-in banner in its place.
+- Other players' workplaces now show their workers on your screen. Their villagers used to
+  stand idle in your view because only their own game knew who worked where.
 
 ## 0.16.15
 

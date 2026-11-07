@@ -776,10 +776,10 @@ namespace KaCMultiplayer
         // Barracks.Tick and PlayerUpdatePersonArrivalForeignHook closes for SetHome, just reached
         // through JobSystem instead of through Player.Update.
         //
-        // Unlike a home, there is no "SetHome broadcast" for a job assignment anywhere in this
-        // codebase (checked: no hook exists on Job.AssignEmployee, Job.OnEmployeeAssigned or
-        // Villager.QuitJob), so an employee is PURELY a local decision with no cross-machine
-        // reconciliation of any kind. On its own that would be harmless for the machines merely
+        // When this was written there was no broadcast for a job assignment, so an employee was
+        // PURELY a local decision. Since 2026-11-07 Net/JobSync.cs sends the owner's assignments
+        // and vacancies and the others apply them; this gate is still what makes the owner the
+        // only one deciding. Before that, it would have been harmless for the machines merely
         // watching a foreign kingdom: BuildingWatcher.Poll already refuses to report anyone's
         // buildings but the local player's own, so every OTHER machine's constructionProgress for
         // that building arrives instead as a BuildSnapshotMessage FROM its owner, and an

@@ -34,8 +34,6 @@ the kingdom log filter, the pink ships, and the host's lobby screen staying aliv
 ## Not synced yet, and each one is a way for two machines to drift apart
 
 - **Villager hunger and health.**
-- **Job assignments.** Decided by the owner only now, but not sent, so another player's workers
-  show as idle in our copy.
 - **Army positions are corrected in batches**, so a fast chase can briefly look different on each
   screen. Smooth it out.
 - **A kingdom whose player left is only half frozen.** `Main.FreezeGhostKingdomsFully` gates the
