@@ -183,6 +183,12 @@ namespace KaCMultiplayer.Net
             // one that resolved the fight, so its own report tells it nothing new.
             // Streamer effects change the simulation for whoever has them, so everybody takes the
             // same set. Not relayed back to the sender, whose audience already applied it.
+            NetRegistry.Register<WitchEffectMessage>(NetMessageId.WitchEffect);
+            NetRegistry.OnServer<WitchEffectMessage>(NetMessageId.WitchEffect,
+                (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx) && !IsOwnEcho(m.Origin)) WitchSync.Apply(m); });
+            NetRegistry.OnClient<WitchEffectMessage>(NetMessageId.WitchEffect,
+                (m, ctx) => { if (!IsOwnEcho(m.Origin)) WitchSync.Apply(m); });
+
             NetRegistry.Register<StreamerEffectsMessage>(NetMessageId.StreamerEffects);
             NetRegistry.OnServer<StreamerEffectsMessage>(NetMessageId.StreamerEffects,
                 (m, ctx) => { if (NetRouter.RelayAndApply(m, ctx)) ApplyStreamerEffects(m); });
@@ -1352,7 +1358,17 @@ namespace KaCMultiplayer.Net
                     World.inst.AddWolfDen(m.X, m.Z);
                     ClearCaveAt(m.X, m.Z);
                 }
-                else if (m.HazardType == 1) World.inst.AddWitchHut(m.X, m.Z);
+                else if (m.HazardType == 1)
+                {
+                    // A joiner's own world generation already made the huts from the shared seed,
+                    // and the host's catch-up names them again. Two on one tile would be two witches.
+                    if (World.inst.GetWitchHutAt(World.inst.GetCellData(m.X, m.Z)) != null)
+                    {
+                        NetLog.Info("witch hut at " + m.X + "," + m.Z + " is already here, ignored");
+                        return;
+                    }
+                    World.inst.AddWitchHut(m.X, m.Z);
+                }
                 else { NetLog.Warn("unknown hazard type " + m.HazardType); return; }
 
                 NetLog.Info("hazard type " + m.HazardType + " at " + m.X + "," + m.Z);

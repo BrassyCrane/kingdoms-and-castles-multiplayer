@@ -94,6 +94,13 @@ namespace KaCMultiplayer.Net
 
         public bool FogOfWar { get; set; }
 
+        /// <summary>
+        /// Whether a witch's spells and curses reach every kingdom (true) or only the kingdom of
+        /// the player who dealt with her (false, the default). Chosen by the host in the lobby.
+        /// See Net/WitchSync.cs.
+        /// </summary>
+        public bool WitchShared { get; set; }
+
         /// <summary>The host is loading a saved game, so the world settings come from the save.</summary>
         public bool SavedGame { get; set; }
 
@@ -180,6 +187,7 @@ namespace KaCMultiplayer.Net
             WorldRivers = other.WorldRivers;
             PlacementType = other.PlacementType;
             FogOfWar = other.FogOfWar;
+            WitchShared = other.WitchShared;
             SavedGame = other.SavedGame;
             SavedYear = other.SavedYear;
             SavedKingdoms = other.SavedKingdoms;

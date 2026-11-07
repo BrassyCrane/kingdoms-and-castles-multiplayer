@@ -149,6 +149,7 @@ namespace KaCMultiplayer.Net
 
         // 1160-1169  streamer effects
         StreamerEffects = 1160,
+        WitchEffect = 1161,
 
         // 1170-1179  companion mods
         // One id for every companion mod: the channel name travels in the payload, so a new

@@ -425,9 +425,6 @@ namespace KaCMultiplayer.Dev
             // The local player must still be the LOCAL player. Handing base.Unpack the wrong
             // PlayerSaveData would quietly leave us playing somebody else's kingdom, which is the
             // failure the PlayerSaveData swap in Unpack exists to prevent.
-            Check("loading a save did not bring witch huts back",
-                  UnityEngine.Object.FindObjectsOfType<WitchHut>().Length == 0);
-
             Check("we still own our own kingdom after loading",
                   Player.inst != null && Player.inst.PlayerLandmassOwner != null
                   && Player.inst.PlayerLandmassOwner.teamId == teamBefore);

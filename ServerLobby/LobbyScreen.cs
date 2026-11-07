@@ -91,7 +91,9 @@ namespace KaCMultiplayer
         public static TMP_Dropdown RiversPicker { get; set; }
 
         public static TMP_Dropdown PlacementPicker { get; set; }
-        public static Toggle FogToggle { get; set; }
+        /// <summary>The prefab's Fog of War checkbox, relabelled: fog was never built, so the
+        /// slot carries the "witch spells reach everyone" setting instead.</summary>
+        public static Toggle WitchToggle { get; set; }
 
         public static LobbyScreen inst { get; set; }
 
@@ -260,8 +262,8 @@ namespace KaCMultiplayer
                 RiversPicker = BindInChildren<TMP_Dropdown>(world + "WorldRivers");
                 RiversPicker.value = 1;
 
-                FogToggle = Bind<Toggle>(world + "FogOfWarToggle");
-                FogToggle.isOn = true;
+                WitchToggle = Bind<Toggle>(world + "FogOfWarToggle");
+                WitchToggle.isOn = false;
 
                 PlacementPicker = BindInChildren<TMP_Dropdown>(world + "Placement");
                 PlacementPicker.value = 0;
@@ -271,8 +273,7 @@ namespace KaCMultiplayer
                 DropdownCycler.AttachAll(transform);
 
                 PlacementPicker.enabled = true;
-                FogToggle.enabled = false;
-                FogToggle.gameObject.SetActive(false);
+                LabelWitchToggle();
 
                 LoadingPanel = Node("LoadingSave").gameObject;
                 ProgressFill = Bind<Image>("LoadingSave/Window/ProgressBar/Fill");
@@ -286,7 +287,7 @@ namespace KaCMultiplayer
                     // Guests can look but not touch: the host owns every setting, and anything
                     // typed here would be overwritten by the next settings broadcast anyway.
                     LockDown(NameBox, SeatsBox, PasswordBox);
-                    LockDown(DifficultyPicker, SizePicker, RiversPicker, PlacementPicker);
+                    LockDown(DifficultyPicker, SizePicker, RiversPicker, PlacementPicker, WitchToggle);
                     LockDown(SeedBox);
                     LockDown(RerollButton);
 
@@ -489,6 +490,26 @@ namespace KaCMultiplayer
         /// focus, and text fields additionally have to be told to drop the caret, or one that was
         /// already focused keeps accepting keystrokes after being disabled.
         /// </summary>
+        /// <summary>
+        /// Shows the old Fog of War checkbox under its new meaning. Every text on it is replaced,
+        /// whatever the prefab called it, so the old wording cannot survive in a child we missed.
+        /// Multiplayer reason: the witch setting needs a lobby control every player can see, and
+        /// this slot already sits in the world settings layout without any Unity work.
+        /// </summary>
+        private static void LabelWitchToggle()
+        {
+            try
+            {
+                WitchToggle.gameObject.SetActive(true);
+                WitchToggle.enabled = true;
+                foreach (TextMeshProUGUI t in WitchToggle.GetComponentsInChildren<TextMeshProUGUI>(true))
+                    t.text = "Witch spells hit everyone";
+                foreach (Text t in WitchToggle.GetComponentsInChildren<Text>(true))
+                    t.text = "Witch spells hit everyone";
+            }
+            catch (Exception e) { Main.helper.Log("Witch toggle setup error: " + e.Message); }
+        }
+
         private static void LockDown(params Selectable[] controls)
         {
             foreach (Selectable control in controls)
@@ -594,6 +615,7 @@ namespace KaCMultiplayer
             SizePicker.value = (int)s.WorldSize;
             RiversPicker.value = (int)s.WorldRivers;
             PlacementPicker.value = s.PlacementType;
+            if (WitchToggle.isOn != s.WitchShared) WitchToggle.isOn = s.WitchShared;
 
             // Here rather than in Awake: at Awake the host's settings have not arrived, so
             // Locked is still false and every client is told "no password" even for a locked
@@ -670,6 +692,10 @@ namespace KaCMultiplayer
             }
 
             s.WorldType = MultiplayerMapBias;   // not a player choice, see MultiplayerMapBias
+
+            // Not a world setting, so it stays editable when a save is loaded: saves do not
+            // record it, and the host may want a different rule for the rest of that game.
+            s.WitchShared = WitchToggle.isOn;
 
             ApplyWorldSettings(s);
 

@@ -15,8 +15,6 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
 Everything the game has that a multiplayer session does not have yet. Each one should come back,
 with one machine owning its decisions and the others applying them.
 
-- **Witch huts.** Switched off because their live sync was unreliable. Turn them back on with their
-  spawning owned by one machine, the way wolves are.
 - **The Hall of Diplomacy** is not set up for multiplayer. Ctrl + Shift + D stands in for it. Make
   the real screen work for players and AI kingdoms.
 - **Viking raids run, but the raid system throws and the error is only caught.** The clock no longer

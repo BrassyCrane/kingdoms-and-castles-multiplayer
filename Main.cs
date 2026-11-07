@@ -978,7 +978,7 @@ namespace KaCMultiplayer
         public static ushort currentClient = 0;
 
         // True while a received WorldHazard packet is being applied, so the client-side
-        // suppression in AddWolfDenHook / AddWitchHutHook lets the host-driven spawn through.
+        // AddWolfDenHook does not announce it straight back.
         public static bool applyingWorldHazard = false;
 
         // True while a speed change received from a peer is being applied locally. The
@@ -5403,77 +5403,6 @@ namespace KaCMultiplayer
             }
         }
 
-        // True while World.UpscaleFeatures is building the world's scenery. See AddWitchHutHook for
-        // why anyone cares which caller is asking.
-        public static bool upscalingWorldFeatures;
-
-        // World.UpscaleFeatures turns saved terrain back into objects, and it is a GENERATION step
-        // even though a load is what runs it. Knowing we are inside it is what lets the witch-hut
-        // suppression tell "the world is being rebuilt" apart from "a save is restoring a specific
-        // hut", which the save-unpack flag alone cannot distinguish.
-        //
-        // A stuck flag would mean huts stay suppressed, which in a multiplayer session is the state
-        // we want anyway, so an exception escaping the original method is harmless here.
-        [HarmonyPatch(typeof(World), "UpscaleFeatures")]
-        public class WorldUpscaleFeaturesHook
-        {
-            public static void Prefix()
-            {
-                if (!NetClient.client.IsConnected && !NetHost.IsRunning) return;
-                Main.upscalingWorldFeatures = true;
-            }
-
-            public static void Postfix()
-            {
-                Main.upscalingWorldFeatures = false;
-            }
-        }
-
-        // Witch huts are DISABLED in multiplayer for now, their live sync was unreliable (huts
-        // appearing only for the host). Suppress witch-hut spawns for EVERYONE in an MP session, so
-        // new games simply have none. We gate on NetHost.IsRunning OR client.IsConnected (not just
-        // IsConnected): on the host the server starts at lobby creation, BEFORE world generation, so
-        // huts created during world generation are caught as well. NetHost.server is statically
-        // created and never null, so IsRunning is safe in single-player (returns false →
-        // suppression off).
-        //
-        // THE SAVE-LOAD HOLE, found 2026-09-07 when the automated run's own log was read: a hut
-        // appeared during the load-back check, and the one line this hook logs said exactly why,
-        // "Unpacking=True". The save-unpack exception below was written believing the save restores
-        // huts through WitchHutSaveData.Unpack, and that is not what happens. WitchHutSaveData has
-        // no methods at all and nothing in the game references it. The only callers of AddWitchHut
-        // are MapEdit.ApplyWitch, World.PlaceCavesWitches/GenLand and World.UpscaleFeatures, and it
-        // is UpscaleFeatures that LoadSaveContainer.Unpack runs to turn saved terrain back into
-        // objects. So loading any multiplayer save quietly put the huts back that generation had
-        // suppressed, which is not what "disabled until each player can have their own" means.
-        //
-        // Fixed by suppressing during that rebuild as well. The exception now covers only what it
-        // was meant to: a hut arriving by some path other than the world being rebuilt while a save
-        // is loading, plus a synced WorldHazard. No broadcast (Postfix) since there are no live
-        // spawns to announce.
-        [HarmonyPatch(typeof(World), "AddWitchHut")]
-        public class AddWitchHutHook
-        {
-            public static bool Prefix(int x, int z)
-            {
-                bool inSession = NetClient.client.IsConnected || NetHost.IsRunning;
-
-                // Rebuilding the world's scenery is generation, whoever asked for it, so it is not
-                // a reason to let a hut through.
-                bool restoringFromSaveData =
-                    LoadSaveOverrides.SessionSave.Unpacking && !Main.upscalingWorldFeatures;
-
-                if (inSession && !Main.applyingWorldHazard && !restoringFromSaveData)
-                    return false; // disabled in MP, no hut spawns
-
-                // If a hut is allowed through while in a session, record WHY, so if one still appears
-                // we know which bypass path created it. This log line is what found the save-load
-                // hole above; it earns its keep.
-                if (inSession)
-                    Main.helper.Log($"[WITCH] AddWitchHut allowed at ({x},{z}), Unpacking={LoadSaveOverrides.SessionSave.Unpacking} upscaling={Main.upscalingWorldFeatures} applyingWorldHazard={Main.applyingWorldHazard}");
-                return true;
-            }
-        }
 
         // There is deliberately no Player.Update postfix copying peer resource totals. Nothing
         // sends EconomySnapshotMessage (see FixedUpdate), and the receiver in NetRegistrations

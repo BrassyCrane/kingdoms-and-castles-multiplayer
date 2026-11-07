@@ -40,7 +40,6 @@ Each entry says what you see, and what to do about it if there is a workaround.
 
 ## The map
 
-- **Witch huts are switched off** in multiplayer.
 - **Army positions are corrected in batches**, so a fast chase can briefly look different on each
   screen.
 - **An error in the raid system is caught** so it can no longer freeze the game clock, but what

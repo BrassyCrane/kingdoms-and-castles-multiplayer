@@ -28,6 +28,7 @@ namespace KaCMultiplayer.Net.Messages
         public int WorldRivers;
         public int PlacementType;
         public bool FogOfWar;
+        public bool WitchShared;
         public bool SavedGame;
         public int SavedYear;
         public int SavedKingdoms;
@@ -52,6 +53,7 @@ namespace KaCMultiplayer.Net.Messages
             m.AddInt(WorldRivers);
             m.AddInt(PlacementType);
             m.AddBool(FogOfWar);
+            m.AddBool(WitchShared);
             m.AddBool(SavedGame);
             m.AddInt(SavedYear);
             m.AddInt(SavedKingdoms);
@@ -77,6 +79,7 @@ namespace KaCMultiplayer.Net.Messages
             WorldRivers = m.GetInt();
             PlacementType = m.GetInt();
             FogOfWar = m.GetBool();
+            WitchShared = m.GetBool();
             SavedGame = m.GetBool();
             SavedYear = m.GetInt();
             SavedKingdoms = m.GetInt();
@@ -108,6 +111,7 @@ namespace KaCMultiplayer.Net.Messages
                 WorldRivers = (int)s.WorldRivers,
                 PlacementType = s.PlacementType,
                 FogOfWar = s.FogOfWar,
+                WitchShared = s.WitchShared,
                 SavedGame = s.SavedGame,
                 SavedYear = s.SavedYear,
                 SavedKingdoms = s.SavedKingdoms,
@@ -133,6 +137,7 @@ namespace KaCMultiplayer.Net.Messages
             s.WorldRivers = (World.MapRiverLakes)WorldRivers;
             s.PlacementType = PlacementType;
             s.FogOfWar = FogOfWar;
+            s.WitchShared = WitchShared;
             s.SavedGame = SavedGame;
             s.SavedYear = SavedYear;
             s.SavedKingdoms = SavedKingdoms;

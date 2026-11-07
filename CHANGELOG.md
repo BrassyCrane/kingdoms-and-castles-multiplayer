@@ -1,5 +1,12 @@
 # Changelog
 
+## Next version (not released yet)
+
+- Witch huts are back in multiplayer. Every player sees the same huts and has their own
+  dealings with the witch, and the spell is paid from your own gold.
+- New lobby setting, "Witch spells hit everyone": when ticked, a witch's spells and curses
+  reach every kingdom instead of only the kingdom of the player who dealt with her.
+
 ## 0.16.16
 
 - Custom banners now show on every player's screen, on flags, armies, ships and in the lobby,

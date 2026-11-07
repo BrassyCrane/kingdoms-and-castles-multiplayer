@@ -119,6 +119,7 @@ namespace KaCMultiplayer.Net
 
             for (int i = 0; i < f.Length; i++)
             {
+                if (WitchSync.KeepFlagLocal(f[i].Name)) continue;   // a private witch spell, see WitchSync
                 try { if ((bool)f[i].GetValue(null)) mask |= (1 << i); }
                 catch { }   // one unreadable flag must not cost the rest
             }
@@ -187,6 +188,7 @@ namespace KaCMultiplayer.Net
                 {
                     for (int i = 0; i < f.Length; i++)
                     {
+                        if (WitchSync.KeepFlagLocal(f[i].Name)) continue;   // ours alone, see WitchSync
                         try { f[i].SetValue(null, (m.Effects & (1 << i)) != 0); }
                         catch { }   // guarded per flag, for the usual reason
                     }
