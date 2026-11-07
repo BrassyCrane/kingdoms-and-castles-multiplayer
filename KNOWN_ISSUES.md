@@ -35,8 +35,6 @@ Each entry says what you see, and what to do about it if there is a workaround.
   homeless count climbing with free beds. Fixed in 0.16.15: when a barracks was
   knocked down or destroyed, its soldiers came back as villagers on every machine instead of
   only on its owner's. If it still happens after that, please send both players' output.txt.
-- **A big save takes about half a minute to send** to each player joining it. The loading bar is
-  slow, not stuck.
 
 ## The map
 

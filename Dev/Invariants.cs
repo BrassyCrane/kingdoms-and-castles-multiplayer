@@ -1127,15 +1127,37 @@ namespace KaCMultiplayer.Dev
         }
 
         /// <summary>
-        /// A path a pathing worker thread gave up on is closed, not left waiting forever.
-        ///
-        /// The game swallows any exception inside a path calculation and leaves that path marked
-        /// Finding, which it never asks about again: the unit just stands there.
-        /// Main.CloseAbandonedPaths runs inside WaitForThread once the workers are done and closes
-        /// such paths as "no route". Checked twice: that the sweep is really spliced into the game,
-        /// and that it closes a stuck path, driven on a ThreadedPathing of our own with no threads
-        /// so the live pathfinder is never touched.
+        /// The save codec gives back exactly what it was given: repetitive data, random data,
+        /// overlapping runs, and the tiny edge cases. A joiner loading a save that came back one
+        /// byte off would load a broken world, so this guards SaveCodec before any join uses it.
         /// </summary>
+        private static void PackedSavesComeBackExact()
+        {
+            try
+            {
+                var rnd = new System.Random(7);
+                byte[] mixed = new byte[200000];
+                for (int i = 0; i < mixed.Length; i++)
+                    mixed[i] = (byte)(rnd.Next(4) == 0 ? rnd.Next(256) : i % 13);
+                byte[] noise = new byte[5000];
+                rnd.NextBytes(noise);
+                // Byte s appears 2^s times: the plain Huffman tree would be 17 deep, past the
+                // 15-bit limit, so this exercises the flattening.
+                var deep = new System.Collections.Generic.List<byte>();
+                for (int s = 0; s < 18; s++) for (int j = 0; j < (1 << s); j++) deep.Add((byte)(s * 7));
+
+                bool exact = true;
+                foreach (byte[] c in new[] { new byte[0], new byte[] { 9 }, new byte[70000], noise, mixed, deep.ToArray() })
+                {
+                    byte[] back = KaCMultiplayer.Net.SaveCodec.Unpack(KaCMultiplayer.Net.SaveCodec.Pack(c));
+                    if (back.Length != c.Length) { exact = false; continue; }
+                    for (int i = 0; i < c.Length; i++) if (back[i] != c[i]) { exact = false; break; }
+                }
+                check("a packed save unpacks to exactly the bytes that were sent", exact);
+            }
+            catch (Exception ex) { check("a packed save unpacks to exactly the bytes that were sent: " + ex.Message, false); }
+        }
+
         /// <summary>
         /// A pending reliable message that has been acked and handed back out to a new message must
         /// not still answer to the resend events queued against its previous life.
@@ -1153,34 +1175,6 @@ namespace KaCMultiplayer.Dev
         /// precisely that an old event cannot tell it is old. If either the release or the reuse
         /// stops moving the token, this fails.
         /// </summary>
-        /// <summary>
-        /// The save codec gives back exactly what it was given: repetitive data, random data,
-        /// overlapping runs, and the tiny edge cases. A joiner loading a save that came back one
-        /// byte off would load a broken world, so this guards SaveCodec before any join uses it.
-        /// </summary>
-        private static void PackedSavesComeBackExact()
-        {
-            try
-            {
-                var rnd = new System.Random(7);
-                byte[] mixed = new byte[200000];
-                for (int i = 0; i < mixed.Length; i++)
-                    mixed[i] = (byte)(rnd.Next(4) == 0 ? rnd.Next(256) : i % 13);
-                byte[] noise = new byte[5000];
-                rnd.NextBytes(noise);
-
-                bool exact = true;
-                foreach (byte[] c in new[] { new byte[0], new byte[] { 9 }, new byte[70000], noise, mixed })
-                {
-                    byte[] back = KaCMultiplayer.Net.SaveCodec.Unpack(KaCMultiplayer.Net.SaveCodec.Pack(c));
-                    if (back.Length != c.Length) { exact = false; continue; }
-                    for (int i = 0; i < c.Length; i++) if (back[i] != c[i]) { exact = false; break; }
-                }
-                check("a packed save unpacks to exactly the bytes that were sent", exact);
-            }
-            catch (Exception ex) { check("a packed save unpacks to exactly the bytes that were sent: " + ex.Message, false); }
-        }
-
         private static void RecycledPendingMessagesDropTheirOldEvents()
         {
             try
@@ -1313,6 +1307,16 @@ namespace KaCMultiplayer.Dev
             }
         }
 
+        /// <summary>
+        /// A path a pathing worker thread gave up on is closed, not left waiting forever.
+        ///
+        /// The game swallows any exception inside a path calculation and leaves that path marked
+        /// Finding, which it never asks about again: the unit just stands there.
+        /// Main.CloseAbandonedPaths runs inside WaitForThread once the workers are done and closes
+        /// such paths as "no route". Checked twice: that the sweep is really spliced into the game,
+        /// and that it closes a stuck path, driven on a ThreadedPathing of our own with no threads
+        /// so the live pathfinder is never touched.
+        /// </summary>
         private static void AbandonedPathsAreClosed()
         {
             try

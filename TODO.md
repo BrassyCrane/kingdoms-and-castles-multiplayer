@@ -42,8 +42,6 @@ the kingdom log filter, the pink ships, and the host's lobby screen staying aliv
 - **The server browser lists nothing.** Joining works through Steam invites. Deferred on purpose.
   When it is picked up, check that the `SetLobbyData` publish and the `RequestLobbyList` filter
   really round trip, with logging on both ends.
-- **A big save takes about half a minute to reach each joining player.** It is now packed to about
-  40% of its size before sending; a Huffman stage on top of the packing would roughly halve it again.
 - **State the game keeps once, that multiplayer needs per kingdom**: WorldMask, UnitSystem,
   SiegeCatapult, DragonSpawn. Each one is a place where two kingdoms share something they should
   not.

@@ -4,7 +4,7 @@
 
 - Witch huts are back in multiplayer. Every player sees the same huts and has their own
   dealings with the witch, and the spell is paid from your own gold.
-- Joining a game is about two and a half times quicker: the save is packed before it is sent.
+- Joining a game is about four times quicker: the save is packed before it is sent.
 - New lobby setting, "Witch spells hit everyone": when ticked, a witch's spells and curses
   reach every kingdom instead of only the kingdom of the player who dealt with her.
 

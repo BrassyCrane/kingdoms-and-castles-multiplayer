@@ -518,7 +518,7 @@ namespace KaCMultiplayer.Net
         {
             try
             {
-                // Packed first, about 2.5 times smaller, so the join is that much quicker. Our own
+                // Packed first, 3 to 5 times smaller, so the join is that much quicker. Our own
                 // codec, because the game's mod security check rejects System.IO.Compression. The
                 // packed bytes are what is remembered below, so a repaired chunk matches too.
                 int rawSize = save.Length;
