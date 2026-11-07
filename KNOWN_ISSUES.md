@@ -45,8 +45,10 @@ Each entry says what you see, and what to do about it if there is a workaround.
 
 ## Diplomacy and trade
 
-- **The Hall of Diplomacy is not set up for multiplayer.** Use **Ctrl + Shift + D** instead, which
-  covers both players and AI kingdoms.
+- **The Hall of Diplomacy's conversation screen only opens for the host talking to an AI kingdom.**
+  Anyone else's envoy opens the Ctrl + Shift + D window instead, which covers both players and AI
+  kingdoms. (Fixed on the development version, not released yet: before that, envoys do not work
+  in multiplayer at all.)
 
 ## Lobby
 

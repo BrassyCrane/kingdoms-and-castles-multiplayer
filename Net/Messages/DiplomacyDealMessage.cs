@@ -26,6 +26,13 @@ namespace KaCMultiplayer.Net.Messages
         /// than was asked. Every machine credits exactly this number. See PlayerRelations.Settle.
         /// </summary>
         Settled = 4,
+
+        /// <summary>
+        /// An envoy from the Hall of Diplomacy hands over a gift it carried. The goods already
+        /// left the giver's kingdom when the hall gathered them, so nothing is taken here; only
+        /// the receiver's machine, which holds the receiver's real stores, puts them away.
+        /// </summary>
+        Gift = 5,
     }
 
     /// <summary>

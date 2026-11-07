@@ -349,7 +349,7 @@ namespace KaCMultiplayer.Net
 
                 if (NetRouter.IsServer)
                 {
-                    Outcome o = Decide(me, aiTeam, action, res, amount);
+                    Outcome o = Decide(me, aiTeam, action, res, amount, null);
                     foreach (KeyValuePair<FreeResourceType, int> d in o.Deposits)
                         PlayerRelations.DeliverTo(mine, d.Key, d.Value);
                     Tell(o.Title, o.Body);
@@ -367,6 +367,51 @@ namespace KaCMultiplayer.Net
                 DealNoticeWindow.ShowSent(NameFor(aiTeam), "Your envoy is on the way to " + NameFor(aiTeam) + "...");
             }
             catch (Exception e) { NetLog.Error("AI diplomacy action " + action, e); }
+        }
+
+        /// <summary>
+        /// An envoy from this machine's Hall of Diplomacy hands its gift to an AI kingdom. Used on
+        /// a guest; the host's own envoys talk to the AI through the game's own conversation. The
+        /// goods already left this kingdom when the hall gathered them, so nothing is taken here.
+        /// Multiplayer reason: AI kingdoms run on the host only, so the host decides.
+        /// </summary>
+        public static void GiveEnvoyGift(int me, int aiTeam, Assets.Code.ResourceAmount gift)
+        {
+            try
+            {
+                var res = new List<int>();
+                var amt = new List<int>();
+                foreach (FreeResourceType t in PlayerRelations.Demandable)
+                {
+                    if (gift.Get(t) <= 0) continue;
+                    res.Add((int)t);
+                    amt.Add(gift.Get(t));
+                }
+                if (res.Count == 0) return;
+
+                if (NetRouter.IsServer)
+                {
+                    var list = new List<KeyValuePair<FreeResourceType, int>>();
+                    for (int i = 0; i < res.Count; i++) list.Add(new KeyValuePair<FreeResourceType, int>((FreeResourceType)res[i], amt[i]));
+                    Outcome o = Decide(me, aiTeam, AiAction.Gift, FreeResourceType.Gold, 0, list);
+                    LandmassOwner mine = Player.inst != null ? Player.inst.PlayerLandmassOwner : null;
+                    foreach (KeyValuePair<FreeResourceType, int> d in o.Deposits)
+                        PlayerRelations.DeliverTo(mine, d.Key, d.Value);
+                    Tell(o.Title, o.Body);
+                    return;
+                }
+
+                NetRouter.Send(new AiRequestMessage
+                {
+                    FromTeam = me,
+                    AiTeam = aiTeam,
+                    Action = (int)AiAction.Gift,
+                    GiftResources = res.ToArray(),
+                    GiftAmounts = amt.ToArray()
+                });
+                DealNoticeWindow.ShowSent(NameFor(aiTeam), "Your envoy hands your gift to " + NameFor(aiTeam) + "...");
+            }
+            catch (Exception e) { NetLog.Error("envoy gift to an AI kingdom", e); }
         }
 
         /// <summary>A Demand or Offer from the resource picker, aimed at an AI kingdom.</summary>
@@ -389,15 +434,24 @@ namespace KaCMultiplayer.Net
                 AiAction action = (AiAction)m.Action;
                 FreeResourceType res = (FreeResourceType)m.Resource;
 
+                var gift = new List<KeyValuePair<FreeResourceType, int>>();
+                if (action == AiAction.Gift)
+                {
+                    if (m.GiftResources.Length == 0) gift.Add(new KeyValuePair<FreeResourceType, int>(res, m.Amount));
+                    for (int i = 0; i < m.GiftResources.Length && i < m.GiftAmounts.Length; i++)
+                        gift.Add(new KeyValuePair<FreeResourceType, int>((FreeResourceType)m.GiftResources[i], m.GiftAmounts[i]));
+                    gift.RemoveAll(g => g.Value <= 0);
+                }
+
                 Outcome o;
                 if (KingdomFor(m.AiTeam) == null)
                 {
                     o = new Outcome { Title = "AI kingdoms", Body = "That AI kingdom no longer exists." };
-                    if (action == AiAction.Gift && m.Amount > 0) o.Deposits.Add(new KeyValuePair<FreeResourceType, int>(res, m.Amount));
+                    o.Deposits.AddRange(gift);
                 }
                 else
                 {
-                    o = Decide(team, m.AiTeam, action, res, m.Amount);
+                    o = Decide(team, m.AiTeam, action, res, m.Amount, gift);
                 }
 
                 SendResult(sender, m.AiTeam, o);
@@ -431,7 +485,8 @@ namespace KaCMultiplayer.Net
         /// and standing; resources that must reach the human are returned as Deposits for the
         /// human's own machine to put away.
         /// </summary>
-        private static Outcome Decide(int me, int aiTeam, AiAction action, FreeResourceType res, int amount)
+        private static Outcome Decide(int me, int aiTeam, AiAction action, FreeResourceType res, int amount,
+                                      List<KeyValuePair<FreeResourceType, int>> gift)
         {
             AIKingdom k = KingdomFor(aiTeam);
             string name = NameFor(aiTeam);
@@ -482,7 +537,9 @@ namespace KaCMultiplayer.Net
                     break;
 
                 case AiAction.Gift:
-                    DecideGift(k, me, aiTeam, name, now, res, amount, o);
+                    if (gift == null || gift.Count == 0)
+                        gift = new List<KeyValuePair<FreeResourceType, int>> { new KeyValuePair<FreeResourceType, int>(res, amount) };
+                    DecideGift(k, me, aiTeam, name, now, gift, o);
                     break;
 
                 case AiAction.Demand:
@@ -494,20 +551,31 @@ namespace KaCMultiplayer.Net
             return o;
         }
 
-        /// <summary><paramref name="given"/> has already left the giver's stores.</summary>
+        /// <summary>
+        /// <paramref name="gift"/> has already left the giver's stores. One gift, however many
+        /// resources it holds (an envoy's gift from the Hall of Diplomacy can hold several), as
+        /// the game scores a gift on its total.
+        /// </summary>
         private static void DecideGift(AIKingdom k, int me, int aiTeam, string name, World.Relations now,
-                                       FreeResourceType res, int given, Outcome o)
+                                       List<KeyValuePair<FreeResourceType, int>> gift, Outcome o)
         {
             bool atWar = now == World.Relations.Enemy;
 
             if (atWar && k.rulerPersonality == AIKingdom.RulerPersonality.Aggressive)
             {
                 o.Body = name + " sends your gift back. It wants victory, not presents.";
-                o.Deposits.Add(new KeyValuePair<FreeResourceType, int>(res, given));
+                o.Deposits.AddRange(gift);
                 return;
             }
 
-            PlayerRelations.DeliverTo(k.LandmassOwner, res, given);
+            int given = 0;
+            var parts = new List<string>();
+            foreach (KeyValuePair<FreeResourceType, int> g in gift)
+            {
+                PlayerRelations.DeliverTo(k.LandmassOwner, g.Key, g.Value);
+                given += g.Value;
+                parts.Add(g.Value + " " + PlayerRelations.ResourceLabel(g.Key));
+            }
 
             int year = Player.inst != null ? Player.inst.CurrYear : 0;
             long key = TeamPair.Key(aiTeam, me);
@@ -528,7 +596,7 @@ namespace KaCMultiplayer.Net
             else if (sinceLast > 1) reaction = points > 75 ? "thanks you for another generous gift" : "accepts your gift politely";
             else reaction = "accepts your gift, though you gave one only recently";
 
-            o.Body = name + " " + reaction + " (" + given + " " + PlayerRelations.ResourceLabel(res)
+            o.Body = name + " " + reaction + " (" + string.Join(", ", parts.ToArray())
                      + "). Its opinion of you is now " + StandingName(Standing(k, me)) + ".";
         }
 

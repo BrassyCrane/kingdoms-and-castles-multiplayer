@@ -115,6 +115,13 @@ namespace KaCMultiplayer.Net.Messages
         public int Resource;
         public int Amount;
 
+        /// <summary>
+        /// An envoy's gift carries several resources at once; when these are set they are the
+        /// gift and Resource/Amount are not used. Empty for everything else.
+        /// </summary>
+        public int[] GiftResources = new int[0];
+        public int[] GiftAmounts = new int[0];
+
         public void Serialize(Message m)
         {
             m.AddUShort(Origin);
@@ -123,6 +130,12 @@ namespace KaCMultiplayer.Net.Messages
             m.AddInt(Action);
             m.AddInt(Resource);
             m.AddInt(Amount);
+            m.AddInt(GiftResources.Length);
+            for (int i = 0; i < GiftResources.Length; i++)
+            {
+                m.AddInt(GiftResources[i]);
+                m.AddInt(GiftAmounts[i]);
+            }
         }
 
         public void Deserialize(Message m)
@@ -133,6 +146,14 @@ namespace KaCMultiplayer.Net.Messages
             Action = m.GetInt();
             Resource = m.GetInt();
             Amount = m.GetInt();
+            int n = m.GetInt();
+            GiftResources = new int[n];
+            GiftAmounts = new int[n];
+            for (int i = 0; i < n; i++)
+            {
+                GiftResources[i] = m.GetInt();
+                GiftAmounts[i] = m.GetInt();
+            }
         }
     }
 

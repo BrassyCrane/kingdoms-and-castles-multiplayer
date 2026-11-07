@@ -1,5 +1,12 @@
 # Changelog
 
+## Next version (not released yet)
+
+- Envoys from the Hall of Diplomacy work in multiplayer. Walking one to another kingdom's keep
+  opens diplomacy with that kingdom, and a gift it carries can be handed to another player or
+  to an AI kingdom. Envoys used to throw errors every moment they existed.
+- The Hall of Diplomacy tells you when a gift is ready for your envoy to pick up.
+
 ## 0.16.17
 
 - Witch huts are back in multiplayer. Every player sees the same huts and has their own

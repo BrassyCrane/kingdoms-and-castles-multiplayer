@@ -747,6 +747,22 @@ namespace KaCMultiplayer.Net
                         return;
                     }
 
+                    case Messages.DealKind.Gift:
+                    {
+                        FreeResourceType res;
+                        if (!ValidResource(m.Resource, out res) || m.Amount <= 0) return;
+                        string what = m.Amount + " " + ResourceLabel(res);
+
+                        if (m.ToTeam == MyTeamOrZero())
+                        {
+                            DeliverTo(Player.inst.PlayerLandmassOwner, res, m.Amount);
+                            KaCMultiplayer.Lobby.DealNoticeWindow.ShowResolved("Gift",
+                                Main.KingdomNameForTeam(m.FromTeam) + "'s envoy brings you " + what + ".");
+                        }
+                        Announce(m.FromTeam, m.ToTeam, "sent an envoy with " + what + " for", "a gift");
+                        return;
+                    }
+
                     case Messages.DealKind.Settled:
                     {
                         // FromTeam is the payer, ToTeam the payee, Amount what really moved.
@@ -1158,6 +1174,21 @@ namespace KaCMultiplayer.Net
                 Amount = amount,
                 Resource = (int)res
             });
+        }
+
+        /// <summary>
+        /// An envoy's gift from the Hall of Diplomacy, handed to another player's kingdom: one
+        /// Gift deal per resource it carries. The goods already left this kingdom when the hall
+        /// gathered them. Multiplayer reason: the receiver's stores are real only on the
+        /// receiver's machine, so that machine is the one that puts the goods away.
+        /// </summary>
+        public static void SendEnvoyGift(int from, int to, Assets.Code.ResourceAmount gift)
+        {
+            for (int i = 0; i < Demandable.Length; i++)
+            {
+                int amount = gift.Get(Demandable[i]);
+                if (amount > 0) Send(from, to, Messages.DealKind.Gift, amount, Demandable[i]);
+            }
         }
 
         /// <summary>
