@@ -14,6 +14,8 @@
 - Mods copied into the game's local mods folder are compared too. A player whose local mods
   differ from the host's is told which ones, by the name of their code, and cannot join until
   they match.
+- Fixed other players' houses, markets and bakeries on your screen thinking there was nothing
+  to collect, so they gathered differently than on their owner's screen.
 
 ## 0.16.13
 
