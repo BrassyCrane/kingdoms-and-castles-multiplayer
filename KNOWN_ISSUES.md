@@ -1,6 +1,6 @@
 # Known issues
 
-Problems we know about in the current version, **0.16.14**. If you run into one of these, a report is
+Problems we know about in the current version, **0.16.15**. If you run into one of these, a report is
 still useful, especially with your output.txt attached (see the [README](README.md#reporting-a-bug)
 for where to find it). Anything not on this list, please report.
 
@@ -32,7 +32,7 @@ Each entry says what you see, and what to do about it if there is a workaround.
   add-on that ships its own copy. The mod says so at the main menu. Unsubscribe from the other
   item and restart the game.
 - **Villagers standing still next to another player's barracks, wanting a home**, and the
-  homeless count climbing with free beds. Fixed in the next version: when a barracks was
+  homeless count climbing with free beds. Fixed in 0.16.15: when a barracks was
   knocked down or destroyed, its soldiers came back as villagers on every machine instead of
   only on its owner's. If it still happens after that, please send both players' output.txt.
 - **A big save takes about a minute to send** to each player joining it. The loading bar is slow,

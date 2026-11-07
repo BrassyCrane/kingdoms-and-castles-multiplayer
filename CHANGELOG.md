@@ -1,6 +1,6 @@
 # Changelog
 
-## Next version (not released yet)
+## 0.16.15
 
 - Fixed villagers appearing next to another player's barracks when it was knocked down or
   destroyed, standing there forever wanting a home and pushing the homeless count up.
