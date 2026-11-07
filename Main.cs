@@ -8905,6 +8905,28 @@ namespace KaCMultiplayer
             }
         }
 
+        /// <summary>
+        /// Stops another kingdom's barracks from cancelling its training on this machine.
+        ///
+        /// CancelTraining runs when a barracks is demolished or wrecked, on every machine, and
+        /// hands every soldier it holds back as a villager through Player.inst, refunding gold
+        /// too. A barracks' soldier counts are saved, so after a load every machine's copy holds
+        /// them. Here that put the soldiers into the wrong kingdom, or a second copy into the right
+        /// one, standing at a barracks on an island they cannot leave: homeless forever, with a job
+        /// they never reach. The owner's machine cancels it and sends its villagers out as usual.
+        /// Same ownership gate as Barracks.Tick, plus a skip while applying a peer's demolish or
+        /// wreck: that handler borrows the owner's identity, so the gate alone would pass.
+        /// </summary>
+        [HarmonyPatch(typeof(Barracks), "CancelTraining")]
+        public class BarracksCancelTrainingForeignHook
+        {
+            public static bool Prefix(Barracks __instance)
+            {
+                if (NetClient.client.IsConnected && KaCMultiplayer.Net.NetApply.InProgress) return false;
+                return BarracksTickForeignHook.Prefix(__instance);
+            }
+        }
+
 
         // Shares the game speed, pause included, between players.
         //

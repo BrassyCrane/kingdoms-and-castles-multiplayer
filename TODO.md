@@ -5,11 +5,6 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
 
 ## Next
 
-- **Soldiers' villagers may load twice from a save (reported 2026-11-05).** Unclickable copies,
-  homeless count climbing with free beds. Training and disbanding are synced correctly; the reports
-  came from saves made before 0.16.11, when the host saved its own stale copy of each guest's
-  kingdom. If it recurs with a save made on 0.16.13 or later, compare
-  the villager count each machine logs before the save and after the load.
 - **Make a multiplayer save open in single player.** Its kingdoms sit on teams the single-player
   game has no room for, so the game's own Load list cannot open one; the mod now refuses it there
   and points to the multiplayer Load button. Find out what a game without the mod does with the

@@ -31,10 +31,10 @@ Each entry says what you see, and what to do about it if there is a workaround.
   subscribed to a second Workshop item that contains the mod: an old or duplicate upload, or an
   add-on that ships its own copy. The mod says so at the main menu. Unsubscribe from the other
   item and restart the game.
-- **After loading a save with armies, the homeless count may keep climbing** with free beds: the
-  soldiers' villagers seem to load twice, as copies you cannot click. Saves made on 0.16.13 or later
-  should no longer do this. If it still happens with a new save, please send both players'
-  output.txt from that session.
+- **Villagers standing still next to another player's barracks, wanting a home**, and the
+  homeless count climbing with free beds. Fixed in the next version: when a barracks was
+  knocked down or destroyed, its soldiers came back as villagers on every machine instead of
+  only on its owner's. If it still happens after that, please send both players' output.txt.
 - **A big save takes about a minute to send** to each player joining it. The loading bar is slow,
   not stuck.
 
