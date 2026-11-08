@@ -52,6 +52,10 @@ Each entry says what you see, and what to do about it if there is a workaround.
 
 ## Lobby
 
+- **Joining a game from the list sends you back to the menu.** The list shows games from every copy
+  and version of the mod, and an old one cannot play with yours. Make sure you and the host are on
+  the same version and subscribed only to this mod (unsubscribe from any other copy). The next
+  version tells you when this is the reason.
 - **The server browser does not list games.** Join through a Steam invite instead.
 
 ## Fixed in 0.15.0
