@@ -53,6 +53,9 @@ namespace KaCMultiplayer
                     if (NetHost.IsRunning && SteamLobby.CurrentLobby.IsValid())
                     {
                         SteamMatchmaking.SetLobbyData(SteamLobby.CurrentLobby, "kcm_mp", "1");
+                        // The mod version, so a joiner on a different one is told why before
+                        // connecting (SteamLobby.HandleLobbyEntered) instead of bounced to the menu.
+                        SteamMatchmaking.SetLobbyData(SteamLobby.CurrentLobby, "kcm_ver", Main.ModVersion);
                         string nm = (LobbySettings.Current != null && !string.IsNullOrWhiteSpace(LobbySettings.Current.ServerName))
                             ? LobbySettings.Current.ServerName : (SteamFriends.GetPersonaName() + "'s Server");
                         SteamMatchmaking.SetLobbyData(SteamLobby.CurrentLobby, "name", nm);

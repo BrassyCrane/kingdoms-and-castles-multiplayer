@@ -399,6 +399,25 @@ namespace KaCMultiplayer.Net
                 return;
             }
 
+            // A host on another mod version cannot play with us. Hosts before 0.16.18 publish no
+            // version and the oldest ones (and old re-uploads of the mod) do not refuse a newer
+            // guest with a reason, the connection just fails and drops us at the menu. So check
+            // the published version here, before connecting, and say what is wrong.
+            string hostVersion = SteamMatchmaking.GetLobbyData(lobby, "kcm_ver");
+            if (hostVersion != Main.ModVersion)
+            {
+                Main.helper.Log("lobby " + lobby + " host on " + (hostVersion == "" ? "an older version" : hostVersion)
+                                + ", this machine on " + Main.ModVersion + "; leaving it");
+                try { ModalDialog.Hide(); } catch { }
+                SteamLobby.ResetNetworkState();
+                ModalDialog.Show("Different mod version",
+                    "That game is running " + (hostVersion == "" ? "an older version of Kingdoms and Castles Multiplayer" : "Kingdoms and Castles Multiplayer " + hostVersion)
+                    + " and you have " + Main.ModVersion + ". Everyone needs the same version: the host should restart Steam so the Workshop updates the mod,"
+                    + " and unsubscribe from any other copy of the mod.",
+                    "Okay", true, () => { Main.TransitionTo(MenuState.BrowserScreen); });
+                return;
+            }
+
             // Ask before connecting when the host published the lobby as locked. The password
             // itself is never published, only the fact that there is one, and the host
             // validates the answer at connect time and rejects a wrong one.

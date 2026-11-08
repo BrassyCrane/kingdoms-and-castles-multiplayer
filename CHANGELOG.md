@@ -6,6 +6,8 @@
   opens diplomacy with that kingdom, and a gift it carries can be handed to another player or
   to an AI kingdom. Envoys used to throw errors every moment they existed.
 - The Hall of Diplomacy tells you when a gift is ready for your envoy to pick up.
+- Joining a game hosted on a different version of the mod now says so, instead of sending
+  you back to the menu. Old copies of the mod still show their games in the list.
 
 ## 0.16.17
 
