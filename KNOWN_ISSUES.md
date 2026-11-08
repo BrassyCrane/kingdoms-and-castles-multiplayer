@@ -1,6 +1,6 @@
 # Known issues
 
-Problems we know about in the current version, **0.16.17**. If you run into one of these, a report is
+Problems we know about in the current version, **0.16.18**. If you run into one of these, a report is
 still useful, especially with your output.txt attached (see the [README](README.md#reporting-a-bug)
 for where to find it). Anything not on this list, please report.
 
@@ -52,10 +52,6 @@ Each entry says what you see, and what to do about it if there is a workaround.
 
 ## Lobby
 
-- **Joining a game from the list sends you back to the menu.** The list shows games from every copy
-  and version of the mod, and an old one cannot play with yours. Make sure you and the host are on
-  the same version and subscribed only to this mod (unsubscribe from any other copy). The next
-  version tells you when this is the reason.
 - **The server browser does not list games.** Join through a Steam invite instead.
 
 ## Fixed in 0.15.0

@@ -1,6 +1,6 @@
 # Changelog
 
-## Next version (not released yet)
+## 0.16.18
 
 - Envoys from the Hall of Diplomacy work in multiplayer. Walking one to another kingdom's keep
   opens diplomacy with that kingdom, and a gift it carries can be handed to another player or
