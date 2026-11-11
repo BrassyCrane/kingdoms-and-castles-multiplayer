@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.16.19
 
 - Fixed soldiers and other units getting stuck, or falling out of step between players, after
   units died once an AI kingdom had sent an envoy (for example after a Viking raid).
