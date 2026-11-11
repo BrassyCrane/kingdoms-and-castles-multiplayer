@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Fixed soldiers and other units getting stuck, or falling out of step between players, after
+  units died once an AI kingdom had sent an envoy (for example after a Viking raid).
+- Fixed saved games failing to load with an error screen until the game was restarted, after
+  quitting or being disconnected from a game.
+- Leaving a game now clears the old world, like quitting single player does. It used to stay
+  loaded behind the main menu and keep throwing errors.
+- Fixed an error on every house in the first minutes of a fresh game.
+- The same error is now written to output.txt at most 20 times a run, so the file stays small.
+
 ## 0.16.18
 
 - Envoys from the Hall of Diplomacy work in multiplayer. Walking one to another kingdom's keep

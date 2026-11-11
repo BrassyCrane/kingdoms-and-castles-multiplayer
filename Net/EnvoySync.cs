@@ -46,11 +46,13 @@ namespace KaCMultiplayer.Net
         {
             public static bool Prefix(Envoy __instance)
             {
-                if (!Main.InMultiplayer) return true;
+                if (!Main.InMultiplayer) return RunsInSinglePlayer(__instance);
                 try
                 {
+                    // The game's code reads general.army without a check and throws every frame
+                    // when either is gone. A dead envoy has nothing left to do.
                     UnitSystem.Army army = __instance.general != null ? __instance.general.army : null;
-                    if (army == null) return true;
+                    if (army == null) return false;
 
                     // An AI kingdom's envoy on the host that runs it: the game's own code.
                     if (AIBrainsContainer.inst != null && AIBrainsContainer.inst.GetKingdomFromTeamId(army.teamId) != null)
@@ -77,6 +79,71 @@ namespace KaCMultiplayer.Net
                     if (!updateErrorLogged) { updateErrorLogged = true; Main.LogEx("envoy update", e); }
                     return false;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Outside a session: whether the game's own Envoy.Update may run. A single-player envoy
+        /// is team 0 or belongs to an AI kingdom, and always may. Multiplayer reason: a player's
+        /// envoy left over from a session that just ended (team 5 and up, no AI kingdom behind
+        /// it) made the game's code throw every frame behind the main menu, filling the logs.
+        /// </summary>
+        private static bool RunsInSinglePlayer(Envoy envoy)
+        {
+            try
+            {
+                UnitSystem.Army army = envoy.general != null ? envoy.general.army : null;
+                if (army == null) return false;
+                if (army.teamId == 0) return true;
+                return AIBrainsContainer.inst != null && AIBrainsContainer.inst.GetKingdomFromTeamId(army.teamId) != null;
+            }
+            catch { return true; }
+        }
+
+        /// <summary>
+        /// The envoy banners along the top of the screen. The game has one slot per AI team (2 to
+        /// 4) and indexes them by team without a bounds check. Multiplayer reason: once any AI
+        /// envoy has visited, the game hears about every unit removed, and a player's unit (team 5
+        /// and up) dying threw inside the unit clean-up. Dead soldiers stayed half removed (units
+        /// stuck, out of step between machines), and quitting to the menu stopped the world reset
+        /// halfway, so the next save load failed until the game was restarted.
+        /// </summary>
+        private static bool HasBannerSlot(DiplomacyNotificationUI ui, int teamId)
+        {
+            return ui.bannerItems != null && teamId - 2 < ui.bannerItems.Length;
+        }
+
+        /// <summary>Skips closing a banner for a team with no slot. See <see cref="HasBannerSlot"/>.</summary>
+        [HarmonyPatch(typeof(DiplomacyNotificationUI), "CloseBanner")]
+        public class CloseBannerGuard
+        {
+            public static bool Prefix(DiplomacyNotificationUI __instance, int teamId)
+            {
+                return HasBannerSlot(__instance, teamId);
+            }
+        }
+
+        /// <summary>Skips an "envoy arrived" banner for a team with no slot. See <see cref="HasBannerSlot"/>.</summary>
+        [HarmonyPatch(typeof(DiplomacyNotificationUI), "NotifyArrived")]
+        public class NotifyArrivedGuard
+        {
+            public static bool Prefix(DiplomacyNotificationUI __instance, Envoy envoy)
+            {
+                return envoy == null || HasBannerSlot(__instance, envoy.TeamID());
+            }
+        }
+
+        /// <summary>
+        /// Skips an "envoy on the way" banner for a team with no slot. See <see cref="HasBannerSlot"/>.
+        /// The game registers its unit-removed listener first thing in this method; skipping it
+        /// for such a team only means that listener is registered later, by an AI envoy.
+        /// </summary>
+        [HarmonyPatch(typeof(DiplomacyNotificationUI), "NotifyEnroute")]
+        public class NotifyEnrouteGuard
+        {
+            public static bool Prefix(DiplomacyNotificationUI __instance, Envoy envoy)
+            {
+                return envoy == null || HasBannerSlot(__instance, envoy.TeamID());
             }
         }
 

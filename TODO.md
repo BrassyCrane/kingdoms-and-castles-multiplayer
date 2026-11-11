@@ -5,6 +5,9 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
 
 ## Next
 
+- **An AI kingdom's invasion planning throws now and then** (Intention_ManageInvasion.AddObjectives,
+  index out of range, about once a year of play on the host). Probably a team-indexed array sized
+  for teams up to 4; find which and size it for player teams.
 ## Base game systems switched off or broken in multiplayer
 
 Everything the game has that a multiplayer session does not have yet. Each one should come back,

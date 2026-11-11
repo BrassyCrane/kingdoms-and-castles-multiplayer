@@ -25,6 +25,10 @@ Each entry says what you see, and what to do about it if there is a workaround.
 
 ## Loading a saved game
 
+- **A save fails to load with an error screen after you left or lost a game**, and units stop
+  moving or die without disappearing after a Viking raid. Fixed in the next version. Until then,
+  restart the whole game before loading a save, and send both players' output.txt if units
+  still get stuck.
 - **A multiplayer save does not open from the main menu's Load list.** Open **Multiplayer** from the
   main menu, press **Load** and pick it there. You can start it alone if nobody else is joining.
 - **Two copies of the mod installed together stop saves loading.** This happens when you are

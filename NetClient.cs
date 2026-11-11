@@ -70,9 +70,19 @@ namespace KaCMultiplayer
             };
         }
 
+        /// <summary>
+        /// Our connection ended (drop, kick, host gone, or our own leaving). Resets the network
+        /// state, returns to the main menu with a fresh world as the game's own quit does, and
+        /// tells the player why. Multiplayer reason: without all three, a player could not host or
+        /// join again, kept playing in a game nobody else could see, or could not load a save.
+        /// </summary>
         private static void Client_Disconnected(object sender, DisconnectedEventArgs e)
         {
             Main.helper.Log($"client disconnected ({e.Reason}); tearing down session");
+
+            // Read before the reset below clears it. A session that reached the world leaves that
+            // world behind; see the World.Generate call further down.
+            bool worldToClear = Main.PlayHasBegun && !Main.LeavingByMenu;
 
             // Any disconnect (drop, kick, host shutdown) must fully reset networking state,
             // otherwise the server/lobby/state stays dirty and the player can't host or
@@ -125,6 +135,15 @@ namespace KaCMultiplayer
 
                 try { Main.TransitionTo(MenuState.Menu); }
                 catch (Exception tex) { Main.helper.Log("Menu transition on disconnect failed: " + tex.Message); }
+
+                // What the game's own quit to menu does next: a fresh world. Without it the old
+                // kingdoms stayed loaded behind the menu, still ticking and throwing every frame,
+                // and the next save load tripped over what was left of them.
+                if (worldToClear && World.inst != null)
+                {
+                    try { World.inst.Generate(0); Main.helper.Log("Disconnect: cleared the old world"); }
+                    catch (Exception gex) { Main.LogEx("clearing the world on disconnect", gex); }
+                }
 
                 Main.helper.Log("Disconnect: left the session, queued '" + heading + "'");
 

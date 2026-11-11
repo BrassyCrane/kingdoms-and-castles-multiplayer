@@ -352,6 +352,42 @@ namespace KaCMultiplayer
         }
 
         /// <summary>
+        /// Drops ships that are already destroyed from the ship lists before the game's
+        /// ShipSystem.Reset destroys every listed ship again. Multiplayer reason: leaving a
+        /// session destroys the other kingdoms' ships without the game knowing, and Reset then
+        /// threw on the first dead one. Every load runs this Reset, so every save load failed
+        /// with an error screen until the game was restarted. Harmless in single player, where
+        /// the lists never hold a dead ship.
+        /// </summary>
+        [HarmonyPatch(typeof(ShipSystem), "Reset")]
+        public class ShipSystemResetDeadShipsHook
+        {
+            public static void Prefix(ShipSystem __instance)
+            {
+                try
+                {
+                    int dropped = DropDeadShips(__instance.ships) + DropDeadShips(__instance.playerMerchantShips);
+                    if (dropped > 0) helper.Log($"[SHIPS] dropped {dropped} already destroyed ship(s) before the ship reset");
+                }
+                catch (Exception e) { LogEx("ship reset clean-up", e); }
+            }
+
+            /// <summary>Removes destroyed or null ships from a list, keeping order. Returns how many.</summary>
+            private static int DropDeadShips(ArrayExt<ShipBase> list)
+            {
+                if (list == null) return 0;
+                List<ShipBase> alive = new List<ShipBase>();
+                for (int i = 0; i < list.Count; i++)
+                    if (list.data[i] != null) alive.Add(list.data[i]);
+                int dropped = list.Count - alive.Count;
+                if (dropped == 0) return 0;
+                list.Clear();
+                foreach (ShipBase s in alive) list.Add(s);
+                return dropped;
+            }
+        }
+
+        /// <summary>
         /// Stands in for the two calls through which resetting ONE kingdom wipes the job system
         /// for ALL of them: <c>JobSystem.ClearAllJobs</c> in <c>Player.Reset</c>, and
         /// <c>JobSystem.InitJobList</c> in <c>Player.ResetPerLandMassData</c>, which replaces the
@@ -463,7 +499,12 @@ namespace KaCMultiplayer
         public static Player GatherResourcesOwner(int landMass)
         {
             if (!InMultiplayer) return Player.inst;
-            return PlayerOwningLandmass(landMass) ?? Player.inst;
+            Player owner = PlayerOwningLandmass(landMass);
+            // A kingdom built before this machine had the map (a fresh game's first minutes) has
+            // a shorter per-island table; reading past it threw on every house tick.
+            if (owner == null || owner.resourcesPerLandmass == null || landMass < 0
+                || landMass >= owner.resourcesPerLandmass.Length) return Player.inst;
+            return owner;
         }
 
         /// <summary>
@@ -1027,17 +1068,33 @@ namespace KaCMultiplayer
         private static string _lastUnityLog;
         private static int _unityLogRepeats;
 
+        /// <summary>How often each distinct Unity error has been seen this run, and the cap on copies written.</summary>
+        private static readonly Dictionary<string, int> _unityLogCopies = new Dictionary<string, int>();
+        private const int UnityLogCopiesPerError = 20;
+
         /// <summary>
         /// Copies Unity's warnings, errors and exceptions (the game's, Steam transport's and ours)
         /// into output.txt, so a player sends one file instead of output.txt plus Player.log.
         /// Why: the 0.16.0 hour-long kick could not be pinned down because Steam's refused-send
         /// warnings only ever reached Player.log. Plain Debug.Log lines stay out, they are the
         /// game's own chatter. A message repeating every frame is written once, then counted.
+        /// Each distinct error is written at most <see cref="UnityLogCopiesPerError"/> times a run:
+        /// two errors taking turns every frame beat the repeat counter and grew one player's
+        /// output.txt to 73 MB.
         /// </summary>
         private static void CopyUnityLog(string message, string stackTrace, UnityEngine.LogType type)
         {
             if (type == UnityEngine.LogType.Log || helper == null) return;
             if (message == _lastUnityLog) { _unityLogRepeats++; return; }
+
+            string key = message + "|" + stackTrace;
+            int seen;
+            _unityLogCopies.TryGetValue(key, out seen);
+            _unityLogCopies[key] = ++seen;
+            if (seen > UnityLogCopiesPerError) return;
+            if (seen == UnityLogCopiesPerError)
+                message += $" (written {UnityLogCopiesPerError} times now, further copies this run are left out)";
+
             if (_unityLogRepeats > 0) helper.Log($"[unity] (previous line repeated {_unityLogRepeats} more time(s))");
             _lastUnityLog = message;
             _unityLogRepeats = 0;
@@ -4451,10 +4508,17 @@ namespace KaCMultiplayer
                 }
                 catch (Exception e) { Main.helper.Log("[net] clearing our own kingdom on return-to-menu failed: " + e.Message); }
 
+                // The game's own quit regenerates the world right after this; the disconnect
+                // handler that fires inside the reset must not do it a second time.
+                LeavingByMenu = true;
                 try { KaCMultiplayer.Net.SteamLobby.ResetNetworkState(); }
                 catch (Exception e) { Main.helper.Log("[net] reset on return-to-menu failed: " + e.Message); }
+                finally { LeavingByMenu = false; }
             }
         }
+
+        /// <summary>True while the pause menu's Quit is tearing the session down. See NetClient.Client_Disconnected.</summary>
+        public static bool LeavingByMenu;
 
         /// <summary>
         /// Close returns to the previous screen instead of the game's fixed destination, because
