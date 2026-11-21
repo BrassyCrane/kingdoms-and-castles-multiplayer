@@ -282,6 +282,13 @@ namespace KaCMultiplayer
 
                 BindSavedGameLayout();
 
+                // Which way the settings flow is decided by this one test: a host whose server is
+                // not running is treated as a guest and its controls are repainted from the
+                // received (default) settings every second. Logged so a "settings go back to
+                // default" report shows which side the lobby thought it was on.
+                Main.helper.Log("[lobby] opened as " + (NetHost.IsRunning ? "host" : "guest")
+                                + ", loading a save: " + SteamLobby.loadingSave);
+
                 if (!NetHost.IsRunning)
                 {
                     // Guests can look but not touch: the host owns every setting, and anything

@@ -5,6 +5,9 @@ for players in [KNOWN_ISSUES.md](KNOWN_ISSUES.md); this list is what we intend t
 
 ## Next
 
+- **Lobby settings snap back to the defaults for some hosts** (two Discord reports, 2026-11-21,
+  no log yet). Likely the lobby treating the host as a guest (server not running, so the controls
+  are repainted from the received settings); the lobby now logs which side it opened as.
 - **An AI kingdom's invasion planning throws now and then** (Intention_ManageInvasion.AddObjectives,
   index out of range, about once a year of play on the host). Probably a team-indexed array sized
   for teams up to 4; find which and size it for player teams.

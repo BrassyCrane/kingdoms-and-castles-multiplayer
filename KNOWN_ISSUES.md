@@ -54,6 +54,9 @@ Each entry says what you see, and what to do about it if there is a workaround.
 
 ## Lobby
 
+- **Some hosts cannot change the lobby settings, they jump back to the defaults every second.**
+  Cause not found yet. Check you have only this mod subscribed (no older copy or patch of it),
+  restart the game and host again. If it still happens, please send your output.txt.
 - **The server browser does not list games.** Join through a Steam invite instead.
 
 ## Fixed in 0.15.0
