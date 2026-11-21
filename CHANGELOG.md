@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- The AI kingdom buttons in the lobby now light up when pressed, like the other buttons.
+- The witch setting in the lobby now shows its caption under World Placement instead of a
+  bare checkbox on top of it.
+
 ## 0.16.20
 
 - The lobby writes to output.txt whether it opened as the host or as a guest, to track down

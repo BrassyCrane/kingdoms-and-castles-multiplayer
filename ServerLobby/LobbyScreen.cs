@@ -509,6 +509,35 @@ namespace KaCMultiplayer
             {
                 WitchToggle.gameObject.SetActive(true);
                 WitchToggle.enabled = true;
+                // The prefab ships this toggle uncaptioned and parked over the Placement row, so
+                // it showed as a stray box. Move it just under Placement (in the parent's own
+                // space, so canvas scaling does not matter) and give it a caption of its own.
+                RectTransform box = (RectTransform)WitchToggle.transform;
+                RectTransform place = (RectTransform)PlacementPicker.transform;
+                while (place.parent != null && place.parent != box.parent) place = (RectTransform)place.parent;
+                if (place.parent == box.parent)
+                {
+                    Vector3[] corners = new Vector3[4];
+                    place.GetWorldCorners(corners);
+                    Vector3 bottomLeft = box.parent.InverseTransformPoint(corners[0]);
+                    box.pivot = new Vector2(0f, 1f);
+                    box.localPosition = bottomLeft + new Vector3(0f, -10f, 0f);
+                }
+
+                GameObject captionObj = new GameObject("Caption");
+                captionObj.transform.SetParent(box, false);
+                RectTransform captionRect = captionObj.AddComponent<RectTransform>();
+                captionRect.anchorMin = new Vector2(1f, 0f);
+                captionRect.anchorMax = new Vector2(1f, 1f);
+                captionRect.pivot = new Vector2(0f, 0.5f);
+                captionRect.anchoredPosition = new Vector2(10f, 0f);
+                captionRect.sizeDelta = new Vector2(360f, 0f);
+                TextMeshProUGUI caption = captionObj.AddComponent<TextMeshProUGUI>();
+                Lobby.AiKingdomControl.ApplyFont(caption);
+                caption.color = Lobby.AiKingdomControl.cText;
+                caption.alignment = TextAlignmentOptions.Left;
+                caption.raycastTarget = false;
+
                 foreach (TextMeshProUGUI t in WitchToggle.GetComponentsInChildren<TextMeshProUGUI>(true))
                     t.text = "Witch spells hit everyone";
                 foreach (Text t in WitchToggle.GetComponentsInChildren<Text>(true))

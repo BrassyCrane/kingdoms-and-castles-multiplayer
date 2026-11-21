@@ -432,8 +432,16 @@ namespace KaCMultiplayer.Lobby
             btn.targetGraphic = img;
             if (styleButton != null)
             {
+                // All three transition kinds copied, not just the colours: the lobby's own buttons
+                // may press with a sprite swap or an animator, and copying only one left these
+                // buttons with no press effect.
                 btn.transition = styleButton.transition;
                 btn.colors = styleButton.colors;
+                btn.spriteState = styleButton.spriteState;
+                btn.animationTriggers = styleButton.animationTriggers;
+                Animator styleAnim = styleButton.GetComponent<Animator>();
+                if (styleAnim != null && styleAnim.runtimeAnimatorController != null)
+                    obj.AddComponent<Animator>().runtimeAnimatorController = styleAnim.runtimeAnimatorController;
             }
 
             GameObject textObj = new GameObject("Text");
