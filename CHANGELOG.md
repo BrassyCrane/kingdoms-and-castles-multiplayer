@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.20
+
+- The lobby writes to output.txt whether it opened as the host or as a guest, to track down
+  lobby settings jumping back to the defaults for some hosts.
+
 ## 0.16.19
 
 - Fixed soldiers and other units getting stuck, or falling out of step between players, after
